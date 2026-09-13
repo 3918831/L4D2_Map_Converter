@@ -1,6 +1,6 @@
 # L4D2 Map Converter
 
-在原 BSP 的副本上应用版本化视觉预设，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。已发布的 0.3.0 内置 `c5m1-daylight-v1`；当前开发版增加实验性 `c4m3-overcast-static-v1`，首轮游戏采样与原名实机验收待完成。内置预设无需目标地图 BSP/LMP；无需 VMF、反编译、VBSP 或 VVIS。
+在原 BSP 的副本上应用版本化视觉预设，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。0.4.0 内置 `c5m1-daylight-v1` 与 `c4m3-overcast-static-v1`；C2→C4 固定阴天已完成 HDR 反射采样、原名回填及本次用户实机验收。内置预设无需目标地图 BSP/LMP；无需 VMF、反编译、VBSP 或 VVIS。
 
 这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。游戏、地图资源和官方 `vrad.exe`、`bspzip.exe`、`vpk.exe` 由使用者的本机安装提供；发行包不包含 Python 运行环境、Valve 工具或游戏素材。
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | `c2m1_highway` | C2M1 Highway → `c5m1-daylight-v1` | 使用已接受的 `preserve` 策略；历史 18 号 HDR 成果已获用户验收，新构建仍独立检查 |
 | `c6m1_riverbank` | C6M1 Riverbank → `c5m1-daylight-v1` | 默认 `replace` 晴天，可选 `preserve`；已完成晴天 HDR 反射导入，用户测试反馈基本无问题。验收限于该包及实际测试范围 |
-| `c2m1_highway` | 原始 C2M1 Highway → `c4m3-overcast-static-v1` | 实验性固定阴天，使用 `replace`；无新增雨、雷电或风暴，人工采样与实机验收待完成 |
+| `c2m1_highway` | 原始 C2M1 Highway → `c4m3-overcast-static-v1` | 固定阴天，使用 `replace`；63 份 HDR 反射导入及原名实机验收通过，无新增雨、雷电或风暴；验收限本次包与实际观察范围 |
 | 其他官方图、自定义图、其他参考天气 | — | 尚不支持 |
 
 C6 默认 **覆盖原暴雨、雷声、风暴/闪电曝光、局部雾与后处理、检查点调色、雨声环境音**。建筑、物件、局部灯光/材质、碰撞、NAV 和无关推进事件保留；例如新娘 Witch 仍触发尸潮，只取消风暴分支。设置 `"atmosphere_policy": "preserve"` 可使用旧行为。当前是受限 C6 适配，并非任意地图识别器；结构审计通过也不等于完整战役流程通过。
@@ -52,7 +52,7 @@ python -m l4d2_bsp.workflow build --config config.local.json
 | 文档 | 内容 |
 |---|---|
 | [使用指南](docs/guide.zh-CN.md) | 可复制命令、配置、人工步骤、回退、固定机位 |
-| [C4 固定阴天指南](docs/c4m3-guide.zh-CN.md) | 实验性 C2→C4 配置、固定参数、干燥环境音与验收范围 |
+| [C4 固定阴天指南](docs/c4m3-guide.zh-CN.md) | C2→C4 配置、固定参数、干燥环境音与验收范围 |
 | [架构与保护合同](docs/architecture.md) | 原理、模块分工、审计边界 |
 | [预设与扩展边界](docs/presets.md) | C5/C4 预设、schema 兼容、版本身份和来源适配边界 |
 | [验证与证据](docs/validation.md) | 已确认范围、历史基线、用户验收记录 |
