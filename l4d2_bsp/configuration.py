@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 MAPS = {'c2-c5': 'c2m1_highway', 'c6-c5': 'c6m1_riverbank'}
+SOURCE_ADAPTERS = {'c2m1_highway': 'c2m1_highway'}
+MAPS.update(SOURCE_ADAPTERS)
 PATH_KEYS = ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude', 'game_dir', 'tools_dir', 'output_dir')
 
 
@@ -30,7 +32,14 @@ def load_config(path):
             raise ValueError('source_profile must be c2m1_highway or c6m1_riverbank')
         from .presets import load_preset
         preset = load_preset(value['preset'])
-        profile = next(key for key, name in MAPS.items() if name == value['source_profile'])
+        if value['source_profile'] not in preset.supported_sources:
+            raise ValueError('Unsupported source/preset combination')
+        if preset.schema_version >= 2:
+            profile = SOURCE_ADAPTERS.get(value['source_profile'])
+            if profile is None:
+                raise ValueError('Source adapter does not support full atmosphere replacement')
+        else:
+            profile = next(key for key, name in MAPS.items() if name == value['source_profile'])
     else:
         profile = value.get('profile')
     if not isinstance(profile, str) or profile not in MAPS:
@@ -44,10 +53,14 @@ def load_config(path):
     cfg = {'profile': profile, 'config_file': path}
     if preset:
         cfg.update(source_profile=value['source_profile'], preset=preset.id, preset_file=preset.source_path)
-    policy = value.get('atmosphere_policy', 'replace' if cfg['profile'] == 'c6-c5' else 'preserve')
+    full_preset = preset is not None and preset.schema_version >= 2
+    policy = value.get('atmosphere_policy', preset.atmosphere_policy if full_preset else
+                       ('replace' if cfg['profile'] == 'c6-c5' else 'preserve'))
     if not isinstance(policy, str) or policy not in ('replace', 'preserve'):
         raise ValueError('atmosphere_policy must be replace or preserve')
-    if cfg['profile'] != 'c6-c5' and policy != 'preserve':
+    if full_preset and policy != preset.atmosphere_policy:
+        raise ValueError('Preset requires atmosphere_policy=replace')
+    if not full_preset and cfg['profile'] != 'c6-c5' and policy != 'preserve':
         raise ValueError('atmosphere_policy=replace currently supports c6-c5 only; C2 retains its accepted profile')
     cfg['atmosphere_policy'] = policy
     for key in PATH_KEYS:

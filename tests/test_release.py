@@ -9,7 +9,9 @@ class ReleaseTests(unittest.TestCase):
         root.mkdir()
         for name in ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
-                     'docs/presets.md', 'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
+                     'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md',
+                     'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
+                     'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
                      'l4d2_bsp/__init__.py', 'tests/test_example.py', 'examples/c6-c5.example.json'):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,6 +34,8 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn('l4d2_bsp/__init__.py', packed.namelist())
                 self.assertIn('docs/presets.md', packed.namelist())
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c5m1-daylight-v1.json'), b'fixture')
+                self.assertEqual(packed.read('l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'), b'fixture')
+                self.assertIn('docs/c4m3-guide.zh-CN.md', packed.namelist())
                 self.assertNotIn('config.local.json', packed.namelist())
                 self.assertFalse(any(b'PRIVATE' in packed.read(n) for n in packed.namelist()))
             with self.assertRaises(FileExistsError):
@@ -39,7 +43,9 @@ class ReleaseTests(unittest.TestCase):
 
     def test_release_requires_preset_and_its_public_documentation(self):
         from scripts.make_release import build_release
-        for missing in ('docs/presets.md', 'l4d2_bsp/preset_data/c5m1-daylight-v1.json'):
+        for missing in ('docs/presets.md', 'docs/c4m3-guide.zh-CN.md',
+                        'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
+                        'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp) / 'source'
                 self.make_source(root)
@@ -48,6 +54,15 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     build_release(root, output)
                 self.assertFalse(output.exists())
+
+    def test_python_package_registers_both_builtin_presets_explicitly(self):
+        import tomllib
+        project = Path(__file__).resolve().parents[1] / 'pyproject.toml'
+        settings = tomllib.loads(project.read_text(encoding='utf-8'))
+        self.assertEqual(settings['tool']['setuptools']['package-data']['l4d2_bsp'], [
+            'preset_data/c5m1-daylight-v1.json',
+            'preset_data/c4m3-overcast-static-v1.json',
+        ])
 
     def test_release_rejects_preset_symlink(self):
         from scripts.make_release import build_release

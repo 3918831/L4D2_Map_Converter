@@ -78,6 +78,12 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
     Preserve retains legacy storm timing and local fog ranges. Neither policy
     imports reference geometry or gameplay outputs.
     """
+    if getattr(reference, 'schema_version', 1) >= 2:
+        if atmosphere_policy not in (None, reference.atmosphere_policy):
+            raise ValueError('Preset requires atmosphere_policy=replace')
+        from .source_atmosphere import transfer_atmosphere
+        source_profile = {'c2-c5': 'c2m1_highway', 'c6-c5': 'c6m1_riverbank'}.get(profile, profile)
+        return transfer_atmosphere(data, reference, source_profile=source_profile, kind=kind)
     profile_spec(profile)
     if atmosphere_policy is None:
         atmosphere_policy = 'replace' if profile == 'c6-c5' else 'preserve'

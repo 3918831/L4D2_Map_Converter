@@ -66,6 +66,28 @@ class ConfigurationTests(unittest.TestCase):
         self.value['preset'] = 'c7'
         with self.assertRaisesRegex(ValueError, 'preset'):
             self.load()
+
+    def test_full_atmosphere_preset_selects_source_adapter_and_replace_policy(self):
+        self.use_preset()
+        self.value.update(source_profile='c2m1_highway', preset='c4m3-overcast-static-v1')
+        for key in ('source_bsp','nav'):
+            self.value[key] = self.value[key].replace('c6m1_riverbank','c2m1_highway')
+            (self.root/self.value[key]).write_bytes(b'fixture')
+        for mode in 'hls':
+            self.value['mode_lmps'][mode] = f'input/c2m1_highway_{mode}_0.lmp'
+            (self.root/self.value['mode_lmps'][mode]).write_bytes(b'fixture')
+        cfg = self.load()
+        self.assertEqual(cfg['profile'],'c2m1_highway')
+        self.assertEqual(cfg['atmosphere_policy'],'replace')
+        self.value['atmosphere_policy'] = 'preserve'
+        with self.assertRaisesRegex(ValueError,'policy|replace'):
+            self.load()
+
+    def test_new_target_rejects_unvalidated_source_combination(self):
+        self.use_preset()
+        self.value['preset'] = 'c4m3-overcast-static-v1'
+        with self.assertRaisesRegex(ValueError,'capability|combination|support'):
+            self.load()
         self.value.update(preset='c5m1-daylight-v1', source_profile='c7m1_docks')
         with self.assertRaisesRegex(ValueError, 'source_profile'):
             self.load()

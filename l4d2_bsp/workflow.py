@@ -26,12 +26,15 @@ def tracked(path):
     return {'path': str(Path(path).resolve()), 'sha256': file_hash(path)}
 
 
-def addon_info(map_name, phase):
+def addon_info(map_name, phase, *, preset_id=None):
     if map_name not in MAPS.values() or phase not in ('offline', 'final'):
         raise ValueError('Unsupported addon metadata identity')
+    if preset_id is not None and not re.fullmatch('[a-z0-9-]+', preset_id):
+        raise ValueError('Invalid preset metadata identity')
+    style = preset_id or 'C5 global style'
     return (f'"AddonInfo"\n{{\n "addonSteamAppID" "550"\n "addontitle" "Map Converter {map_name} {phase}"\n'
             f' "addonversion" "0.3.0"\n "addonauthor" "L4D2 Map Converter"\n'
-            f' "addonDescription" "C5 global style; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
+            f' "addonDescription" "{style}; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
 
 
 def run_preset(report):
@@ -106,7 +109,7 @@ def check(config_path):
     assets = lookup_resources(cfg['resource_roots'], names)
     missing = [name for name, item in assets['resources'].items() if not item['found']]
     if missing:
-        raise ValueError(f'Missing C5 style resources; check resource_roots/full installation: {missing}')
+        raise ValueError(f'Missing style resources; check resource_roots/full installation: {missing}')
     report = {'profile': cfg['profile'], 'source_profile': MAPS[cfg['profile']],
               'preset': preset.metadata() if preset else None,
               'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
@@ -168,7 +171,11 @@ def build(config_path):
         report['compiler_diagnostics'] = [line for line in log.splitlines() if re.search(r'error|warning|not found|could not|couldn.t', line, re.I)]
         if any(re.search(r'Error loading studio model|Error!.*(?:material|model)|could not open.*(?:mdl|vmt)', line, re.I) for line in report['compiler_diagnostics']):
             raise ValueError('VRAD reported missing model/material inputs; inspect compiler_diagnostics and bake/vrad.log')
-        payloads = {f'maps/{name}.bsp': compiled, f'maps/{name}.nav': cfg['nav'].read_bytes(), 'addoninfo.txt': addon_info(name, 'offline')}
+        from .soundscapes import preset_soundscape_assets
+        preset = run_preset(report)
+        payloads = {f'maps/{name}.bsp': compiled, f'maps/{name}.nav': cfg['nav'].read_bytes(),
+                    'addoninfo.txt': addon_info(name, 'offline', preset_id=preset.id if preset else None)}
+        payloads.update(preset_soundscape_assets(preset, name) if preset else {})
         payloads.update({f'maps/{name}_{key}_0.lmp': data for key, data in modes.items()})
         if cfg['exclude']:
             payloads[f'maps/{name}_exclude.lst'] = cfg['exclude'].read_bytes()
@@ -209,6 +216,9 @@ def prepare(root):
             relative = 'maps/' + Path(item['name']).name.replace(name, alias, 1)
             assets[relative] = (original / item['name']).read_bytes()
     preset = run_preset(report)
+    if preset:
+        from .soundscapes import preset_soundscape_assets
+        assets.update(preset_soundscape_assets(preset, alias))
     assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'],
                                   exposure_max=preset.capture_exposure_max if preset else 5))
     capture_dir = root / 'capture'
@@ -308,9 +318,10 @@ def _finish(root, capture_path, log_path):
     final = output.read_bytes()
     audit_repacked(baseline, final, replacements)
     original = Path(report['offline_package']['vpk']).with_suffix('')
-    payloads = {item['name']: (original / item['name']).read_bytes() for item in report['offline_package']['files'] if item['name'].startswith('maps/')}
+    payloads = {item['name']: (original / item['name']).read_bytes() for item in report['offline_package']['files']}
     payloads[f'maps/{report["map_name"]}.bsp'] = final
-    payloads['addoninfo.txt'] = addon_info(report['map_name'], 'final')
+    preset = run_preset(report)
+    payloads['addoninfo.txt'] = addon_info(report['map_name'], 'final', preset_id=preset.id if preset else None)
     package = package_files(payloads, stage=root / 'final' / f'attempt-{number:02}', stem=f'lmc_{report["map_name"]}_{report["run_id"]}_final',
                             tools_dir=Path(cfg['tools_dir']), game_dir=Path(cfg['game_dir']))
     report.update(status='final_ready_pending_user_validation', final_package=package, reflection_import=audit,

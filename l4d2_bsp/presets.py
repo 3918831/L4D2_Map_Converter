@@ -16,6 +16,7 @@ from .patch import _validate_value
 
 
 PRESET_ID = 'c5m1-daylight-v1'
+_BUILTINS = {PRESET_ID: 1, 'c4m3-overcast-static-v1': 2}
 _FOG = ('fogcolor', 'fogcolor2', 'fogstart', 'fogend', 'fogmaxdensity',
         'foglerptime', 'HDRColorScale', 'farz')
 _ROLES = {
@@ -37,6 +38,19 @@ _ROLES = {
          'localcontraststrength', 'localcontrastedgestrength', 'grainstrength',
          'fadetoblackstrength', 'fadetime')),
 }
+
+_FULL_FOG = _FOG + ('fogenable', 'fogblend', 'fogdir', 'use_angles', 'angles',
+    'heightFogStart', 'heightFogMaxDensity', 'heightFogDensity')
+_ROLES_V2 = dict(_ROLES, **{
+    'shadow': ('shadow_control', None, _ROLES['shadow'][2] +
+               ('disableallshadows', 'enableshadowsfromlocallights')),
+    'fog_outdoor': ('env_fog_controller', 'fog_master', _FULL_FOG),
+    'fog_interior': ('env_fog_controller', 'foginteriorcontroller', _FULL_FOG),
+    'sky': ('sky_camera', None, _ROLES['sky'][2] + ('fogenable', 'fogdir')),
+    'color_checkpoint': ('color_correction', 'colorcorrection_checkpoint', ('filename',)),
+})
+_WIND_FIELDS = ('windradius', 'minwind', 'maxwind', 'mingust', 'maxgust',
+    'mingustdelay', 'maxgustdelay', 'gustduration', 'gustdirchange', 'angles')
 
 
 def _keys(value, expected, label):
@@ -92,6 +106,30 @@ class StylePreset:
     _common_resources: tuple[str, ...]
     _clear_resources: tuple[str, ...]
     _soundscapes: tuple[tuple[str, str], ...]
+    schema_version: int = 1
+    supported_sources: tuple[str, ...] = ('c2m1_highway', 'c6m1_riverbank')
+    atmosphere_policy: str | None = None
+    _role_data: tuple = ()
+    _exposure_data: tuple = ()
+    _wind_data: tuple | None = None
+    _soundscape_json: str | None = None
+
+    def role_values(self, name):
+        """Return a detached semantic role, never donor identity or geometry."""
+        values = dict(self._role_data).get(name)
+        return dict(values) if values is not None else None
+
+    @property
+    def exposure_values(self):
+        return dict(self._exposure_data)
+
+    @property
+    def wind_values(self):
+        return dict(self._wind_data) if self._wind_data is not None else None
+
+    @property
+    def soundscape_definition(self):
+        return json.loads(self._soundscape_json) if self._soundscape_json is not None else None
 
     def entities(self, kind='bsp'):
         """Return the shared base/mode role view, with no source coordinates."""
@@ -111,7 +149,7 @@ class StylePreset:
         return dict(self._soundscapes)
 
     def metadata(self):
-        return dict(id=self.id, schema_version=1, sha256=self.sha256,
+        return dict(id=self.id, schema_version=self.schema_version, sha256=self.sha256,
                     source_path=str(self.source_path) if self.source_path else None)
 
 
@@ -121,6 +159,8 @@ def parse_preset(data: bytes, *, source_path=None) -> StylePreset:
         document = json.loads(data.decode('utf-8'), object_pairs_hook=_object)
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError('Invalid preset JSON') from exc
+    if type(document) is dict and type(document.get('schema_version')) is int and document['schema_version'] == 2:
+        return _parse_v2(document, data, source_path)
     _keys(document, ('schema_version', 'id', 'roles', 'exposure', 'resources', 'soundscapes'), 'root')
     if type(document['schema_version']) is not int or document['schema_version'] != 1:
         raise ValueError('Unsupported preset schema version')
@@ -201,12 +241,143 @@ def parse_preset(data: bytes, *, source_path=None) -> StylePreset:
     return StylePreset(document['id'], hashlib.sha256(data).hexdigest(),
         Path(source_path).resolve() if source_path is not None else None,
         tuple(entities), float(exposure['maximum']), tuple(resources['common']),
-        tuple(resources['clear']), tuple(soundscapes.items()))
+        tuple(resources['clear']), tuple(soundscapes.items()),
+        _role_data=tuple((role, tuple(values.items())) for role, values in roles.items()),
+        _exposure_data=tuple(exposure.items()))
 
 
 def load_preset(identifier=PRESET_ID) -> StylePreset:
-    """Load the installed C5 preset, without accessing any donor map file."""
-    if identifier != PRESET_ID:
+    """Load a registered preset, without accessing any donor map file."""
+    if type(identifier) is not str or identifier not in _BUILTINS:
         raise ValueError(f'Unsupported preset: {identifier}')
-    path = Path(__file__).resolve().parent / 'preset_data' / (PRESET_ID + '.json')
+    path = Path(__file__).resolve().parent / 'preset_data' / (identifier + '.json')
     return parse_preset(path.read_bytes(), source_path=path)
+
+
+def _visual_value_v2(key, value):
+    if key != 'fogdir':
+        _visual_value(key, value)
+    else:
+        if type(value) is not str:
+            raise ValueError('Preset fog direction must be a string')
+        _validate_value(key, value)
+        numbers = [float(part) for part in value.split()]
+        if len(numbers) != 3 or not all(math.isfinite(n) for n in numbers):
+            raise ValueError('Invalid preset fog direction')
+        if not any(numbers):
+            raise ValueError('Preset fog direction must be nonzero')
+    # The engine stores visual scalars as 32-bit floats. Finite Python doubles
+    # alone would still admit values that overflow when the map is loaded.
+    if key not in ('skyname', 'filename', 'material', 'overlaymaterial'):
+        if any(abs(float(part)) > 3.4028234663852886e38 for part in value.split()):
+            raise ValueError(f'Preset {key} exceeds engine numeric range')
+    if key in ('fogenable', 'fogblend', 'use_angles', 'disableallshadows',
+               'enableshadowsfromlocallights') and value not in ('0', '1'):
+        raise ValueError(f'Preset {key} must be 0 or 1')
+    if key in ('heightFogDensity', 'heightFogMaxDensity', 'fogmaxdensity') and not 0 <= float(value) <= 1:
+        raise ValueError(f'Preset {key} must be in [0, 1]')
+    if key in ('distance', 'foglerptime', 'HDRColorScale', 'fadetime', 'grainstrength',
+               'fadetoblackstrength', 'vignetteblurstrength', 'topvignettestrength') and float(value) < 0:
+        raise ValueError(f'Preset {key} must be nonnegative')
+
+
+def _resource_paths(paths):
+    if type(paths) is not list or any(type(path) is not str for path in paths):
+        raise ValueError('Preset resources must be path lists')
+    if len(paths) != len(set(paths)):
+        raise ValueError('Duplicate preset resource')
+    for path in paths:
+        if not re.fullmatch(r'(?:materials/[a-zA-Z0-9_/]+\.(?:raw|vmt)|'
+                            r'sound/ambient/[a-zA-Z0-9_/]+\.wav)', path) or '//' in path:
+            raise ValueError(f'Unsupported preset resource path: {path}')
+
+
+def _parse_v2(document, data, source_path):
+    from .soundscapes import validate_soundscape_definitions
+
+    _keys(document, ('schema_version', 'id', 'supported_sources', 'atmosphere_policy',
+        'roles', 'exposure', 'wind', 'resources', 'soundscapes', 'soundscape_definition'), 'root')
+    if type(document['id']) is not str or _BUILTINS.get(document['id']) != 2:
+        raise ValueError('Unsupported preset identity')
+    if document['supported_sources'] != ['c2m1_highway']:
+        raise ValueError('Unsupported preset source capabilities')
+    if document['atmosphere_policy'] != 'replace':
+        raise ValueError('Schema 2 requires full atmosphere replacement')
+    roles = document['roles']
+    _keys(roles, _ROLES_V2, 'roles')
+    entities = []
+    for role, (classname, name, fields) in _ROLES_V2.items():
+        values = roles[role]
+        if role == 'sun' and values is None:
+            continue
+        _keys(values, fields, role)
+        pairs = [('classname', classname)]
+        if name:
+            pairs.append(('targetname', name))
+        if role in ('fog_outdoor', 'fog_interior'):
+            pairs.append(('spawnflags', '1' if role == 'fog_outdoor' else '0'))
+        for key, value in values.items():
+            _visual_value_v2(key, value)
+            pairs.append((key, value))
+        entities.append(_entity(pairs))
+    exposure = document['exposure']
+    _keys(exposure, ('minimum', 'maximum', 'bright_pixels', 'rate'), 'exposure')
+    for key, value in exposure.items():
+        if key == 'bright_pixels' and value is None:
+            continue
+        _visual_value('exposure', value)
+        if not 0 < float(value) <= 100:
+            raise ValueError('Preset exposure outside bounds')
+    if float(exposure['minimum']) > float(exposure['maximum']):
+        raise ValueError('Preset exposure minimum exceeds maximum')
+    outputs = []
+    for suffix in ('_infected', '_ghost', ''):
+        target = 'tonemap_global' + suffix
+        entities.append(_entity([('classname', 'env_tonemap_controller' + suffix), ('targetname', target)]))
+        actions = [('SetAutoExposureMin', 'minimum'), ('SetAutoExposureMax', 'maximum')]
+        if not suffix:
+            actions = [('SetTonemapRate', 'rate')] + actions
+            if exposure['bright_pixels'] is not None:
+                actions.insert(0, ('SetTonemapPercentBrightPixels', 'bright_pixels'))
+        outputs.extend(('OnMapSpawn', '\x1b'.join((target, action, exposure[key], '0', '-1')))
+                       for action, key in actions)
+    entities.append(_entity([('classname', 'logic_auto'), *outputs]))
+    wind = document['wind']
+    if wind is not None:
+        _keys(wind, _WIND_FIELDS, 'wind')
+        for key, value in wind.items():
+            _visual_value_v2(key, value)
+            if key != 'angles' and float(value) < (-1 if key == 'windradius' else 0):
+                raise ValueError(f'Preset wind {key} outside bounds')
+        if -1 < float(wind['windradius']) < 0:
+            raise ValueError('Preset wind radius must be -1 or nonnegative')
+        for low, high in (('minwind', 'maxwind'), ('mingust', 'maxgust'), ('mingustdelay', 'maxgustdelay')):
+            if float(wind[low]) > float(wind[high]):
+                raise ValueError('Preset wind minimum exceeds maximum')
+        if float(wind['gustdirchange']) > 180:
+            raise ValueError('Preset gust direction change outside bounds')
+        entities.append(_entity([('classname', 'env_wind'), ('targetname', 'wind_normal'), *wind.items()]))
+    resources = document['resources']
+    _keys(resources, ('common', 'clear'), 'resources')
+    for paths in resources.values():
+        _resource_paths(paths)
+    expected_common = {roles[role]['filename'] for role in ('color_main', 'color_intro', 'color_checkpoint')}
+    expected_common.update('materials/skybox/' + roles['world']['skyname'] + face + '.vmt'
+                           for face in ('bk', 'dn', 'ft', 'lf', 'rt', 'up'))
+    if roles['sun'] is not None:
+        expected_common.update('materials/' + roles['sun'][key] + '.vmt' for key in ('material', 'overlaymaterial'))
+    if set(resources['common']) != expected_common:
+        raise ValueError('Preset resources do not cover the visual roles')
+    soundscapes = document['soundscapes']
+    definitions = document['soundscape_definition']
+    expected_clear = validate_soundscape_definitions(definitions, soundscapes)
+    if set(resources['clear']) != set(expected_clear):
+        raise ValueError('Preset resources do not cover the dry soundscapes')
+    return StylePreset(document['id'], hashlib.sha256(data).hexdigest(),
+        Path(source_path).resolve() if source_path is not None else None,
+        tuple(entities), float(exposure['maximum']), tuple(resources['common']),
+        tuple(resources['clear']), tuple(soundscapes.items()), schema_version=2,
+        supported_sources=tuple(document['supported_sources']), atmosphere_policy=document['atmosphere_policy'],
+        _role_data=tuple((role, tuple(values.items()) if values is not None else None) for role, values in roles.items()),
+        _exposure_data=tuple(exposure.items()), _wind_data=tuple(wind.items()) if wind is not None else None,
+        _soundscape_json=json.dumps(definitions))

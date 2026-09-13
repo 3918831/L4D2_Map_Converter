@@ -1,0 +1,18 @@
+{
+  "source_profile": "c2m1_highway",
+  "preset": "c4m3-overcast-static-v1",
+  "atmosphere_policy": "replace",
+  "source_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c2m1_highway.bsp",
+  "mode_lmps": {
+    "h": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway_h_0.lmp",
+    "l": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway_l_0.lmp",
+    "s": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway_s_0.lmp"
+  },
+  "nav": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway.nav",
+  "exclude": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c2m1_highway_exclude.lst",
+  "game_dir": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2",
+  "tools_dir": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/bin",
+  "output_dir": "./runs/c2-c4-01",
+  "threads": 4,
+  "timeout_seconds": 3600
+}

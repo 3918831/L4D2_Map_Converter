@@ -1,0 +1,158 @@
+{
+  "schema_version": 2,
+  "id": "c4m3-overcast-static-v1",
+  "supported_sources": [
+    "c2m1_highway"
+  ],
+  "atmosphere_policy": "replace",
+  "roles": {
+    "world": {
+      "skyname": "sky_l4d_c4m4_hdr"
+    },
+    "environment": {
+      "_light": "200 225 230 10",
+      "_ambient": "79 108 104 5",
+      "_lightHDR": "-1 -1 -1 1",
+      "_ambientHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_AmbientScaleHDR": "1",
+      "angles": "0 315 0",
+      "pitch": "-15",
+      "SunSpreadAngle": "0"
+    },
+    "directional": {
+      "_light": "79 108 104 30",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "angles": "0 315 0",
+      "pitch": "-80",
+      "SunSpreadAngle": "0"
+    },
+    "shadow": {
+      "color": "0 0 0",
+      "angles": "80 315 0",
+      "distance": "70",
+      "disableallshadows": "0",
+      "enableshadowsfromlocallights": "1"
+    },
+    "fog_outdoor": {
+      "fogcolor": "20 25 25",
+      "fogcolor2": "255 255 255",
+      "fogstart": "0",
+      "fogend": "1500",
+      "fogmaxdensity": "1",
+      "foglerptime": "5",
+      "HDRColorScale": "1",
+      "farz": "2000",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "0",
+      "angles": "0 45 0",
+      "heightFogStart": "0.0",
+      "heightFogMaxDensity": "1.0",
+      "heightFogDensity": "0.0"
+    },
+    "fog_interior": {
+      "fogcolor": "20 25 25",
+      "fogcolor2": "255 255 255",
+      "fogstart": "0",
+      "fogend": "1500",
+      "fogmaxdensity": "1",
+      "foglerptime": "2",
+      "HDRColorScale": "1",
+      "farz": "2000",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "0",
+      "angles": "0 45 0",
+      "heightFogStart": "0.0",
+      "heightFogMaxDensity": "1.0",
+      "heightFogDensity": "0.0"
+    },
+    "sky": {
+      "fogcolor": "20 25 25",
+      "fogcolor2": "255 255 255",
+      "fogstart": "0",
+      "fogend": "1",
+      "fogmaxdensity": "1",
+      "HDRColorScale": "1.0",
+      "fogenable": "1",
+      "fogdir": "1 0 0"
+    },
+    "color_main": {
+      "filename": "materials/correction/cc_c4_return.raw"
+    },
+    "color_intro": {
+      "filename": "materials/correction/cc_c4_return.raw"
+    },
+    "sun": null,
+    "postprocess_exterior": {
+      "vignettestart": "1",
+      "vignetteend": "2",
+      "vignetteblurstrength": "0",
+      "topvignettestrength": "1",
+      "localcontraststrength": "-.25",
+      "localcontrastedgestrength": "-.3",
+      "grainstrength": "1",
+      "fadetoblackstrength": "0",
+      "fadetime": "1"
+    },
+    "color_checkpoint": {
+      "filename": "materials/correction/cc_c4_return.raw"
+    }
+  },
+  "exposure": {
+    "minimum": "1",
+    "maximum": "10",
+    "bright_pixels": null,
+    "rate": ".25"
+  },
+  "wind": {
+    "windradius": "-1",
+    "minwind": "15",
+    "maxwind": "30",
+    "mingust": "50",
+    "maxgust": "100",
+    "mingustdelay": "15",
+    "maxgustdelay": "30",
+    "gustduration": "5",
+    "gustdirchange": "20",
+    "angles": "0 -180 0"
+  },
+  "resources": {
+    "common": [
+      "materials/correction/cc_c4_return.raw",
+      "materials/skybox/sky_l4d_c4m4_hdrbk.vmt",
+      "materials/skybox/sky_l4d_c4m4_hdrdn.vmt",
+      "materials/skybox/sky_l4d_c4m4_hdrft.vmt",
+      "materials/skybox/sky_l4d_c4m4_hdrlf.vmt",
+      "materials/skybox/sky_l4d_c4m4_hdrrt.vmt",
+      "materials/skybox/sky_l4d_c4m4_hdrup.vmt"
+    ],
+    "clear": [
+      "sound/ambient/ambience/crucial_smallroomtone_amb_loop.wav"
+    ]
+  },
+  "soundscapes": {
+    "outdoor": "lmc_c4m3_overcast_v1.outdoor",
+    "indoor": "lmc_c4m3_overcast_v1.indoor"
+  },
+  "soundscape_definition": {
+    "outdoor": {
+      "dsp": "1",
+      "loops": []
+    },
+    "indoor": {
+      "dsp": "1",
+      "loops": [
+        {
+          "wave": "ambient/ambience/crucial_smallroomtone_amb_loop.wav",
+          "volume": "0.28",
+          "pitch": "100"
+        }
+      ]
+    }
+  }
+}
