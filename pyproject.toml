@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "l4d2-map-converter"
-version = "0.4.0"
-description = "Audited L4D2 BSP visual conversion with native lighting and manual reflection capture"
+version = "0.5.0"
+description = "Audited L4D2 BSP visual conversion with native lighting and optional automatic reflection capture"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []

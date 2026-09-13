@@ -1,0 +1,11 @@
+{
+  "backend": "executable",
+  "executable": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2.exe",
+  "game_executable": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2.exe",
+  "arguments": ["-steam", "-novid"],
+  "listenserver_cfg": "listenserver.cfg",
+  "startup_timeout_seconds": 60,
+  "timeout_seconds": 600,
+  "stop_timeout_seconds": 60,
+  "stable_seconds": 5
+}

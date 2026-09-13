@@ -1,4 +1,4 @@
-"""Configurable offline conversion and explicit manual native-capture handoff."""
+"""Configurable offline conversion with manual or automatic native capture."""
 import argparse
 from datetime import datetime
 import io
@@ -11,6 +11,7 @@ import uuid
 import zipfile
 
 from .binary import BspFile
+from . import __version__
 from .configuration import MAPS, file_hash, input_inventory, load_config, verify_inventory
 from .inspect import inspect_bytes
 
@@ -33,7 +34,7 @@ def addon_info(map_name, phase, *, preset_id=None):
         raise ValueError('Invalid preset metadata identity')
     style = preset_id or 'C5 global style'
     return (f'"AddonInfo"\n{{\n "addonSteamAppID" "550"\n "addontitle" "Map Converter {map_name} {phase}"\n'
-            f' "addonversion" "0.3.0"\n "addonauthor" "L4D2 Map Converter"\n'
+            f' "addonversion" "{__version__}"\n "addonauthor" "L4D2 Map Converter"\n'
             f' "addonDescription" "{style}; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
 
 
@@ -339,9 +340,11 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('check', 'build'):
         commands.add_parser(name).add_argument('--config', type=Path, required=True)
-    for name in ('prepare-capture', 'install-capture', 'collect-capture', 'remove-capture', 'finish-capture', 'status'):
+    for name in ('prepare-capture', 'install-capture', 'collect-capture', 'remove-capture', 'finish-capture', 'status', 'auto-capture', 'recover-auto-capture'):
         cmd = commands.add_parser(name)
         cmd.add_argument('--run', type=Path, required=True)
+        if name == 'auto-capture':
+            cmd.add_argument('--launcher', type=Path, required=True)
         if name == 'finish-capture':
             cmd.add_argument('--bsp', type=Path, required=True)
             cmd.add_argument('--log', type=Path, required=True)
@@ -356,6 +359,12 @@ def main(argv=None):
             prepare(args.run)
         elif args.command == 'finish-capture':
             finish(args.run, args.bsp, args.log)
+        elif args.command == 'auto-capture':
+            from .auto_capture import run
+            run(args.run, args.launcher)
+        elif args.command == 'recover-auto-capture':
+            from .auto_capture import recover
+            recover(args.run)
         elif args.command in ('install-capture', 'collect-capture', 'remove-capture'):
             from . import handoff
             getattr(handoff, args.command.split('-')[0])(args.run)

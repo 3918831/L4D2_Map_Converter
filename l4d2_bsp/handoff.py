@@ -104,7 +104,7 @@ def capture_steps(run_id):
     ])
 
 
-def install(root):
+def install(root, *, print_steps=True):
     from .workflow import load_run, write_json
     from .resources import vpk_index
     root = Path(root).resolve()
@@ -136,10 +136,11 @@ def install(root):
     steps = capture_steps(report['run_id'])
     # BOM keeps Chinese readable in Windows PowerShell 5 Get-Content.
     (root / 'CAPTURE-STEPS.txt').write_text(steps, encoding='utf-8-sig')
-    print(steps)
+    if print_steps:
+        print(steps)
 
 
-def collect(root):
+def collect(root, *, print_steps=True):
     from .workflow import load_run, write_json
     root = Path(root).resolve()
     report = load_run(root)
@@ -162,7 +163,8 @@ def collect(root):
     (attempt / 'capture.log').write_bytes(log_data)
     report['latest_capture_evidence'] = str(attempt)
     write_json(root / 'run.json', report)
-    print(f'Archived, not yet accepted: {attempt}\nRun finish-capture --run "{root}" --bsp "{attempt / "captured.bsp"}" --log "{attempt / "capture.log"}"')
+    if print_steps:
+        print(f'Archived, not yet accepted: {attempt}\nRun finish-capture --run "{root}" --bsp "{attempt / "captured.bsp"}" --log "{attempt / "capture.log"}"')
 
 
 def remove(root):

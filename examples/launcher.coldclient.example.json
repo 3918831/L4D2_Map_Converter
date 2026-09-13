@@ -1,0 +1,12 @@
+{
+  "backend": "coldclient",
+  "executable": "E:/Games/Left 4 Dead 2/L4D2 Launcher.exe",
+  "game_executable": "E:/Games/Left 4 Dead 2/left4dead2.exe",
+  "ini_path": "E:/Games/Left 4 Dead 2/ColdClientLoader.ini",
+  "arguments": [],
+  "listenserver_cfg": "listenserver.cfg",
+  "startup_timeout_seconds": 60,
+  "timeout_seconds": 600,
+  "stop_timeout_seconds": 60,
+  "stable_seconds": 5
+}

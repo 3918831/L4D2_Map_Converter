@@ -5,6 +5,42 @@ from unittest.mock import patch
 
 
 class HandoffTests(unittest.TestCase):
+    def test_automatic_collect_archives_without_printing_manual_next_command(self):
+        import contextlib
+        import io
+        from l4d2_bsp.handoff import collect
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            game = root / 'game'
+            (game / 'maps').mkdir(parents=True)
+            (game / 'maps/alias.bsp').write_bytes(b'captured')
+            (game / 'lmc_0123456789abcdef_capture.log').write_bytes(b'log')
+            report = {'status': 'capture_installed', 'run_id': '0123456789abcdef',
+                      'capture_alias': 'alias', 'config': {'game_dir': str(game)}}
+            output = io.StringIO()
+            with patch('l4d2_bsp.workflow.load_run', return_value=report), \
+                 patch('l4d2_bsp.handoff.require_game_closed'), contextlib.redirect_stdout(output):
+                collect(root, print_steps=False)
+            self.assertEqual(output.getvalue(), '')
+            self.assertEqual((root / 'evidence/attempt-01/captured.bsp').read_bytes(), b'captured')
+
+    def test_automatic_install_does_not_print_manual_game_instructions(self):
+        import contextlib
+        import io
+        from l4d2_bsp.handoff import install
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            game = root / 'game'
+            game.mkdir()
+            report = {'status': 'capture_prepared', 'run_id': '0123456789abcdef',
+                      'capture_files': [], 'config': {'game_dir': str(game), 'resource_roots': []}}
+            output = io.StringIO()
+            with patch('l4d2_bsp.workflow.load_run', return_value=report), \
+                 patch('l4d2_bsp.handoff.require_game_closed'), contextlib.redirect_stdout(output):
+                install(root, print_steps=False)
+            self.assertEqual(output.getvalue(), '')
+            self.assertTrue((root / 'CAPTURE-STEPS.txt').is_file())
+
     def test_install_refuses_existing_files_without_overwriting_anything(self):
         from l4d2_bsp.handoff import install_files
         with tempfile.TemporaryDirectory() as temp:

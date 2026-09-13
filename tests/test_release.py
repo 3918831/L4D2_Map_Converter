@@ -5,11 +5,18 @@ import zipfile
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_addon_version_matches_source_release(self):
+        import tomllib
+        from l4d2_bsp.workflow import addon_info
+        project = Path(__file__).resolve().parents[1] / 'pyproject.toml'
+        version = tomllib.loads(project.read_text(encoding='utf-8'))['project']['version']
+        self.assertIn(f'"addonversion" "{version}"'.encode(), addon_info('c2m1_highway', 'final'))
+
     def make_source(self, root):
         root.mkdir()
         for name in ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
-                     'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md',
+                     'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md', 'docs/auto-capture.zh-CN.md',
                      'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                      'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
                      'l4d2_bsp/__init__.py', 'tests/test_example.py', 'examples/c6-c5.example.json'):
@@ -36,6 +43,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c5m1-daylight-v1.json'), b'fixture')
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'), b'fixture')
                 self.assertIn('docs/c4m3-guide.zh-CN.md', packed.namelist())
+                self.assertIn('docs/auto-capture.zh-CN.md', packed.namelist())
                 self.assertNotIn('config.local.json', packed.namelist())
                 self.assertFalse(any(b'PRIVATE' in packed.read(n) for n in packed.namelist()))
             with self.assertRaises(FileExistsError):
