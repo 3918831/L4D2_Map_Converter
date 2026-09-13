@@ -1,0 +1,102 @@
+"""Explicit local dependencies and source identity for the stable workflow."""
+import hashlib
+import json
+from pathlib import Path
+
+MAPS = {'c2-c5': 'c2m1_highway', 'c6-c5': 'c6m1_riverbank'}
+PATH_KEYS = ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude', 'game_dir', 'tools_dir', 'output_dir')
+
+
+def file_hash(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def load_config(path):
+    path = Path(path).resolve()
+    value = json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(value, dict):
+        raise ValueError('Configuration must be a JSON object')
+    unknown = set(value) - set(PATH_KEYS) - {'profile', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots'}
+    if unknown:
+        raise ValueError(f'Unknown configuration keys: {sorted(unknown)}')
+    if value.get('profile') not in MAPS:
+        raise ValueError('profile must be c2-c5 or c6-c5; other maps are not supported yet')
+
+    def resolve(raw):
+        if not isinstance(raw, str) or not raw or any(ord(c) < 32 for c in raw):
+            raise ValueError('Paths must be nonempty strings without control characters')
+        return (path.parent / raw).resolve()
+
+    cfg = {'profile': value['profile'], 'config_file': path}
+    for key in PATH_KEYS:
+        if key == 'exclude' and not value.get(key):
+            cfg[key] = None
+            continue
+        if key not in value:
+            raise ValueError(f'Missing configuration key: {key}')
+        cfg[key] = resolve(value[key])
+    for key, default, maximum in (('threads', 4, 64), ('timeout_seconds', 3600, 86400)):
+        number = value.get(key, default)
+        if type(number) is not int or not 1 <= number <= maximum:
+            raise ValueError(f'{key} must be an integer from 1 to {maximum}')
+        cfg[key] = number
+    modes = value.get('mode_lmps')
+    if not isinstance(modes, dict) or set(modes) != set('hls'):
+        raise ValueError('mode_lmps must explicitly provide h, l and s mode files')
+    cfg['mode_lmps'] = {key: resolve(raw) for key, raw in modes.items()}
+    name = MAPS[cfg['profile']]
+    if cfg['source_bsp'].name.lower() != name + '.bsp' or cfg['reference_bsp'].name.lower() != 'c5m1_waterfront.bsp':
+        raise ValueError('BSP filenames do not match the selected supported source/reference profile')
+    if cfg['reference_lmp'].name.lower() not in {f'c5m1_waterfront_{mode}_0.lmp' for mode in 'hl'}:
+        raise ValueError('reference_lmp must be an explicit C5 campaign mode entity patch')
+    for mode, source in cfg['mode_lmps'].items():
+        if source.name.lower() != f'{name}_{mode}_0.lmp':
+            raise ValueError(f'Wrong map/mode filename for mode {mode}')
+    if cfg['nav'].name.lower() != name + '.nav':
+        raise ValueError('NAV filename does not match source map')
+    if cfg['exclude'] and cfg['exclude'].name.lower() != name + '_exclude.lst':
+        raise ValueError('exclude filename does not match source map')
+    inputs = [cfg[k] for k in ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude') if cfg[k]] + list(cfg['mode_lmps'].values())
+    for source in inputs:
+        if not source.is_file():
+            raise ValueError(f'Missing input: {source}')
+    if not (cfg['game_dir'] / 'gameinfo.txt').is_file():
+        raise ValueError('game_dir must contain gameinfo.txt (normally the left4dead2 directory)')
+    for executable in ('vrad.exe', 'bspzip.exe', 'vpk.exe'):
+        if not (cfg['tools_dir'] / executable).is_file():
+            raise ValueError(f'Missing required tool: {cfg["tools_dir"] / executable}')
+    for install in (cfg['game_dir'].parent, cfg['tools_dir'].parent):
+        if cfg['output_dir'].is_relative_to(install):
+            raise ValueError('output_dir must be outside each game/tools installation')
+    if not str(cfg['output_dir']).isascii():
+        raise ValueError('output_dir must use an ASCII path for the native BSPZIP replacement list')
+    if any(source.is_relative_to(cfg['output_dir']) for source in inputs + [path]):
+        raise ValueError('output_dir must not contain any input/config file')
+    if 'resource_roots' in value:
+        roots = value['resource_roots']
+        if not isinstance(roots, list) or not roots:
+            raise ValueError('resource_roots must be a nonempty list of directories')
+        cfg['resource_roots'] = [resolve(x) for x in roots]
+        if any(not p.is_dir() for p in cfg['resource_roots']):
+            raise ValueError('A configured resource root is not a directory')
+    else:
+        parent = cfg['game_dir'].parent
+        cfg['resource_roots'] = [p for p in (parent / 'update', parent / 'left4dead2_dlc3', parent / 'left4dead2_dlc2', parent / 'left4dead2_dlc1', cfg['game_dir']) if p.is_dir()]
+    return cfg
+
+
+def input_inventory(cfg):
+    paths = [cfg['config_file'], *[cfg[k] for k in ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude') if cfg[k]],
+             *cfg['mode_lmps'].values(), cfg['game_dir'] / 'gameinfo.txt']
+    paths.extend(cfg['tools_dir'] / name for name in ('vrad.exe', 'bspzip.exe', 'vpk.exe'))
+    paths.extend(p for p in cfg['tools_dir'].glob('*.dll'))
+    paths.extend(p for base in (cfg['tools_dir'], cfg['game_dir']) for p in base.glob('*.rad'))
+    return [{'path': str(p), 'size': p.stat().st_size, 'sha256': file_hash(p)} for p in dict.fromkeys(paths)]
+
+
+def verify_inventory(inventory):
+    for entry in inventory:
+        path = Path(entry['path'])
+        if not path.is_file() or file_hash(path) != entry['sha256']:
+            raise ValueError(f'Input changed or missing; use a new run: {path}')

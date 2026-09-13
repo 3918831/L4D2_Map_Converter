@@ -1,0 +1,308 @@
+"""Configurable offline conversion and explicit manual native-capture handoff."""
+import argparse
+from datetime import datetime
+import io
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import uuid
+import zipfile
+
+from .binary import BspFile
+from .configuration import MAPS, file_hash, input_inventory, load_config, verify_inventory
+from .inspect import inspect_bytes
+
+
+def write_json(path, value):
+    path = Path(path)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str) + '\n', encoding='utf-8')
+    temporary.replace(path)
+
+
+def tracked(path):
+    return {'path': str(Path(path).resolve()), 'sha256': file_hash(path)}
+
+
+def addon_info(map_name, phase):
+    if map_name not in MAPS.values() or phase not in ('offline', 'final'):
+        raise ValueError('Unsupported addon metadata identity')
+    return (f'"AddonInfo"\n{{\n "addonSteamAppID" "550"\n "addontitle" "Map Converter {map_name} {phase}"\n'
+            f' "addonversion" "0.1.0"\n "addonauthor" "L4D2 Map Converter"\n'
+            f' "addonDescription" "C5 global style; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
+
+
+def load_run(root):
+    root = Path(root).resolve()
+    result = json.loads((root / 'run.json').read_text(encoding='utf-8'))
+    if result.get('schema_version') != 1:
+        raise ValueError('Unsupported run manifest version')
+    verify_inventory(result['input_inventory'])
+    verify_inventory(result.get('tracked_outputs', []))
+    return result
+
+
+def status_summary(report):
+    summary = {key: report.get(key) for key in ('run_id', 'map_name', 'profile', 'status', 'error', 'last_capture_import_error')} | {
+        'runtime_accepted': False,
+        'acceptance_note': 'Build/capture import verification is not user runtime acceptance. Record your observations separately.'}
+    for key in ('offline_package', 'final_package'):
+        package = report.get(key)
+        summary[key] = None if not package else {k: package.get(k) for k in ('vpk', 'sha256', 'native_extract_verified')} | {'file_count': len(package.get('files', []))}
+    return summary
+
+
+def check(config_path):
+    from .profiles import transfer_style
+    from .resources import lookup_resources
+    cfg = load_config(config_path)
+    source, donor = cfg['source_bsp'].read_bytes(), cfg['reference_bsp'].read_bytes()
+    inspection = inspect_bytes(source)
+    if any(key.endswith('_error') for key in inspection):
+        raise ValueError(f'Input BSP failed structural inspection: {inspection}')
+    output, audit = transfer_style(source, donor, profile=cfg['profile'])
+    modes, mode_audits = {}, {}
+    for key, path in cfg['mode_lmps'].items():
+        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp')
+    # Check concrete new style assets. Complete material dependency closure is
+    # not claimed; compiler diagnostics and user loading remain further gates.
+    names = ['materials/correction/cc_c5_main.raw', 'materials/sprites/light_glow02_add_noz.vmt']
+    names.extend(f'materials/skybox/sky_l4d_c5_1_hdr{face}.vmt' for face in ('bk', 'dn', 'ft', 'lf', 'rt', 'up'))
+    assets = lookup_resources(cfg['resource_roots'], names)
+    missing = [name for name, item in assets['resources'].items() if not item['found']]
+    if missing:
+        raise ValueError(f'Missing C5 style resources; check resource_roots/full installation: {missing}')
+    report = {'profile': cfg['profile'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
+              'mode_styles': mode_audits, 'style_resources': assets,
+              'limitations': ['Resource roots are lookup candidates; game mount order must be checked in game.',
+                              'C6 preserves authored storm/weather events and requires independent runtime testing.',
+                              'Only HDR, these two bounded profiles, and observed native resource formats are supported.']}
+    return cfg, report, output, modes
+
+
+def build(config_path):
+    from .native import audit_bake, native, package_files
+    cfg, preflight, prepared, modes = check(config_path)
+    root = cfg['output_dir']
+    if root.exists():
+        raise ValueError('output_dir already exists. Keep its evidence; choose a fresh output_dir for a new build.')
+    inventory = input_inventory(cfg)
+    root.mkdir(parents=True, exist_ok=False)
+    run_id = uuid.uuid4().hex[:16]
+    report = {'schema_version': 1, 'run_id': run_id, 'created_at': datetime.now().astimezone().isoformat(),
+              'status': 'preparing', 'profile': cfg['profile'], 'map_name': preflight['map_name'],
+              'config': cfg, 'input_inventory': inventory, 'tracked_outputs': [], 'preflight': preflight}
+    manifest = root / 'run.json'
+    write_json(manifest, report)
+    try:
+        name = report['map_name']
+        compile_dir = root / 'bake'
+        compile_dir.mkdir()
+        snapshot = compile_dir / 'input.bsp.snapshot'
+        snapshot.write_bytes(prepared)
+        bsp = compile_dir / (name + '.bsp')
+        bsp.write_bytes(prepared)
+        report['status'] = 'baking'
+        report['vrad_command'] = ['-game', str(cfg['game_dir']), '-novconfig', '-hdr', '-bounce', '4',
+            '-StaticPropLighting', '-StaticPropPolys', '-TextureShadows', '-threads', str(cfg['threads']), '-low', str(bsp)]
+        write_json(manifest, report)
+        print(f'Baking HDR world/static-prop lighting. Log: {compile_dir / "vrad.log"}', flush=True)
+        native(cfg['tools_dir'] / 'vrad.exe', report['vrad_command'], cwd=compile_dir,
+               log=compile_dir / 'vrad.log', timeout=cfg['timeout_seconds'])
+        compiled = bsp.read_bytes()
+        report['bake_audit'] = audit_bake(prepared, compiled)
+        log = (compile_dir / 'vrad.log').read_text(encoding='utf-8', errors='replace')
+        report['compiler_diagnostics'] = [line for line in log.splitlines() if re.search(r'error|warning|not found|could not|couldn.t', line, re.I)]
+        if any(re.search(r'Error loading studio model|Error!.*(?:material|model)|could not open.*(?:mdl|vmt)', line, re.I) for line in report['compiler_diagnostics']):
+            raise ValueError('VRAD reported missing model/material inputs; inspect compiler_diagnostics and bake/vrad.log')
+        payloads = {f'maps/{name}.bsp': compiled, f'maps/{name}.nav': cfg['nav'].read_bytes(), 'addoninfo.txt': addon_info(name, 'offline')}
+        payloads.update({f'maps/{name}_{key}_0.lmp': data for key, data in modes.items()})
+        if cfg['exclude']:
+            payloads[f'maps/{name}_exclude.lst'] = cfg['exclude'].read_bytes()
+        report['status'] = 'packaging_offline'
+        write_json(manifest, report)
+        package = package_files(payloads, stage=root / 'offline', stem=f'lmc_{name}_{run_id}_offline',
+                                tools_dir=cfg['tools_dir'], game_dir=cfg['game_dir'])
+        report['offline_package'] = package
+        report['offline_map'] = str(Path(package['vpk']).with_suffix('') / f'maps/{name}.bsp')
+        report['tracked_outputs'] = [tracked(snapshot), tracked(bsp), tracked(package['vpk'])]
+        report['tracked_outputs'].extend(tracked(Path(package['vpk']).with_suffix('') / item['name']) for item in package['files'])
+        verify_inventory(inventory)
+        report['status'] = 'offline_ready'
+        report['reflection_strategy'] = 'original sampled/default reflection textures preserved; not recaptured'
+        write_json(manifest, report)
+        print(json.dumps(status_summary(report), ensure_ascii=False), flush=True)
+        return report
+    except Exception as exc:
+        report.update(status='failed', failed_stage=report['status'], error=str(exc))
+        write_json(manifest, report)
+        raise
+
+
+def prepare(root):
+    from .reflections import prepare_capture, capture_controls
+    root = Path(root).resolve()
+    report = load_run(root)
+    if report['status'] != 'offline_ready':
+        raise ValueError('prepare-capture requires offline_ready; use status to inspect this run')
+    name, alias = report['map_name'], 'mc' + report['run_id'][:8]
+    baseline = Path(report['offline_map']).read_bytes()
+    assets, audit = prepare_capture(baseline, map_name=name, alias=alias)
+    package = report['offline_package']
+    original = Path(package['vpk']).with_suffix('')
+    for item in package['files']:
+        if item['name'].startswith('maps/'):
+            relative = 'maps/' + Path(item['name']).name.replace(name, alias, 1)
+            assets[relative] = (original / item['name']).read_bytes()
+    assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'], exposure_max=5))
+    capture_dir = root / 'capture'
+    if capture_dir.exists():
+        raise ValueError('Capture preparation directory already exists; inspect it before retrying')
+    capture_dir.mkdir()
+    for relative, data in assets.items():
+        path = capture_dir / relative
+        if not path.resolve().is_relative_to(capture_dir):
+            raise ValueError('Capture output path escaped staging directory')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('xb') as stream:
+            stream.write(data)
+    report.update(status='capture_prepared', capture_alias=alias, capture_audit=audit,
+                  capture_files=[{'name': name, **tracked(capture_dir / name)} for name in sorted(assets)])
+    report['tracked_outputs'].extend(tracked(capture_dir / name) for name in assets)
+    report['capture_instructions'] = {'game_dir': report['config']['game_dir'], 'files_to_install': str(capture_dir),
+        'purpose': 'Temporary alias is for native cubemap generation only, never the delivered gameplay map.',
+        'after_capture': 'Restore specular, exit game, copy the generated alias BSP and capture log to evidence/, then finish-capture.'}
+    write_json(root / 'run.json', report)
+    print(json.dumps({'status': report['status'], 'alias': alias, 'controls': sorted(n for n in assets if n.startswith('cfg/'))}, ensure_ascii=False))
+    return report
+
+
+def audit_repacked(baseline, final, replacements):
+    a, b = BspFile.parse(baseline), BspFile.parse(final)
+    if a.version != b.version or a.revision != b.revision or any(
+            a.lumps[i] != b.lumps[i] or a.lump_bytes(i) != b.lump_bytes(i)
+            for i in range(64) if i != 40):
+        raise ValueError('BSPZIP changed protected data/directory metadata; final package was not created')
+    if (a.lumps[40].version, a.lumps[40].fourcc) != (b.lumps[40].version, b.lumps[40].fourcc):
+        raise ValueError('BSPZIP changed protected pak interpretation')
+    old, new = zipfile.ZipFile(io.BytesIO(a.lump_bytes(40))), zipfile.ZipFile(io.BytesIO(b.lump_bytes(40)))
+    if new.testzip() is not None or len(new.namelist()) != len(set(new.namelist())) or set(old.namelist()) != set(new.namelist()):
+        raise ValueError('BSPZIP resource inventory/CRC mismatch')
+    for name in old.namelist():
+        if new.read(name) != replacements.get(name, old.read(name)):
+            raise ValueError(f'Unexpected packed resource modification: {name}')
+
+
+def finish(root, capture_path, log_path):
+    try:
+        return _finish(root, capture_path, log_path)
+    except Exception as exc:
+        manifest = Path(root).resolve() / 'run.json'
+        if manifest.is_file():
+            report = json.loads(manifest.read_text(encoding='utf-8'))
+            report['last_capture_import_error'] = str(exc)
+            write_json(manifest, report)
+        raise
+
+
+def _finish(root, capture_path, log_path):
+    from .native import native, package_files
+    from .reflections import capture_replacements
+    root = Path(root).resolve()
+    report = load_run(root)
+    if report['status'] not in ('capture_prepared', 'capture_installed'):
+        raise ValueError('finish-capture requires a prepared capture run')
+    captured = Path(capture_path).read_bytes()
+    log = Path(log_path).read_bytes()
+    # Unique marker is required for provenance, and generated controls emit
+    # REQUESTED only after guards. Pixel/resource checks remain authoritative.
+    log_text = log.decode('utf-8', errors='replace')
+    if report['run_id'] not in log_text.lower() or report['capture_alias'] not in log_text.lower() or 'CAPTURE_REQUESTED' not in log_text:
+        raise ValueError('Capture log lacks this run/map/request marker; supply the log from the generated guarded controls')
+    if re.search(r"couldn't get.*(?:hdr|cubemap)|unable.*maps[/\\]" + re.escape(report['capture_alias']), log_text, re.I):
+        raise ValueError('Capture log reports missing reflection resources; repair the alias installation and restart before capture')
+    baseline = Path(report['offline_map']).read_bytes()
+    replacements, audit = capture_replacements(baseline, captured, map_name=report['map_name'], alias=report['capture_alias'])
+    parent = root / 'reflection-import'
+    parent.mkdir(exist_ok=True)
+    number = 1
+    while (parent / f'attempt-{number:02}').exists():
+        number += 1
+    stage = parent / f'attempt-{number:02}'
+    stage.mkdir()
+    report['latest_import_attempt'] = str(stage)
+    write_json(root / 'run.json', report)
+    (stage / 'captured.bsp').write_bytes(captured)
+    (stage / 'capture.log').write_bytes(log)
+    listing = []
+    for name, data in replacements.items():
+        path = stage / 'resources' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        listing.extend([name, str(path)])
+    pair_list = stage / 'replace-list.txt'
+    # Native utility reads local paths. ASCII paths are supported by this
+    # baseline; fail rather than silently mangle a path in a list file.
+    try:
+        pair_list.write_bytes(('\n'.join(listing) + '\n').encode('ascii'))
+    except UnicodeEncodeError as exc:
+        raise ValueError('Native BSPZIP replacement list requires an ASCII output path; choose an ASCII run directory') from exc
+    output = stage / (report['map_name'] + '.bsp')
+    cfg = report['config']
+    native(Path(cfg['tools_dir']) / 'bspzip.exe', ['-addorupdatelist', report['offline_map'], str(pair_list), str(output), '-game', cfg['game_dir']],
+           cwd=stage, log=stage / 'bspzip.log', timeout=120)
+    final = output.read_bytes()
+    audit_repacked(baseline, final, replacements)
+    original = Path(report['offline_package']['vpk']).with_suffix('')
+    payloads = {item['name']: (original / item['name']).read_bytes() for item in report['offline_package']['files'] if item['name'].startswith('maps/')}
+    payloads[f'maps/{report["map_name"]}.bsp'] = final
+    payloads['addoninfo.txt'] = addon_info(report['map_name'], 'final')
+    package = package_files(payloads, stage=root / 'final' / f'attempt-{number:02}', stem=f'lmc_{report["map_name"]}_{report["run_id"]}_final',
+                            tools_dir=Path(cfg['tools_dir']), game_dir=Path(cfg['game_dir']))
+    report.update(status='final_ready_pending_user_validation', final_package=package, reflection_import=audit,
+                  reflection_strategy='native HDR samples recaptured; original LDR/default reflections preserved')
+    report.pop('last_capture_import_error', None)
+    report['tracked_outputs'].extend([tracked(output), tracked(package['vpk']), tracked(stage / 'captured.bsp'), tracked(stage / 'capture.log')])
+    verify_inventory(report['input_inventory'])
+    write_json(root / 'run.json', report)
+    print(json.dumps(status_summary(report), ensure_ascii=False))
+    return report
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    for name in ('check', 'build'):
+        commands.add_parser(name).add_argument('--config', type=Path, required=True)
+    for name in ('prepare-capture', 'install-capture', 'collect-capture', 'remove-capture', 'finish-capture', 'status'):
+        cmd = commands.add_parser(name)
+        cmd.add_argument('--run', type=Path, required=True)
+        if name == 'finish-capture':
+            cmd.add_argument('--bsp', type=Path, required=True)
+            cmd.add_argument('--log', type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        if args.command == 'check':
+            _, report, _, _ = check(args.config)
+            print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        elif args.command == 'build':
+            build(args.config)
+        elif args.command == 'prepare-capture':
+            prepare(args.run)
+        elif args.command == 'finish-capture':
+            finish(args.run, args.bsp, args.log)
+        elif args.command in ('install-capture', 'collect-capture', 'remove-capture'):
+            from . import handoff
+            getattr(handoff, args.command.split('-')[0])(args.run)
+        else:
+            print(json.dumps(status_summary(load_run(args.run)), ensure_ascii=False, indent=2))
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError, zipfile.BadZipFile) as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,0 +1,30 @@
+# Native game inputs, large reproducible output and local evidence stay local.
+/artifacts/
+/bsp/
+/runs/
+/dist/
+/build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.local.json
+/config.json
+/.superpowers/
+/.worktrees/
+# Historical working notes contain machine paths; public summaries are curated.
+/docs/experiments/
+/docs/research/
+/docs/superpowers/
+*.log
+*.bsp
+*.lmp
+*.vpk
+*.nav
+*.vtf
+*.vhv
+*.dll
+*.exe
+.DS_Store
+Thumbs.db
