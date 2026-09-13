@@ -1,5 +1,6 @@
 {
   "profile": "c6-c5",
+  "atmosphere_policy": "replace",
   "source_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2_dlc1/maps/c6m1_riverbank.bsp",
   "reference_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c5m1_waterfront.bsp",
   "reference_lmp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c5m1_waterfront_l_0.lmp",

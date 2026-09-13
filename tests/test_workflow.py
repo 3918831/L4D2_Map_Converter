@@ -32,6 +32,17 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(cfg['threads'], 4)
         self.assertFalse((self.root / 'runs').exists())
 
+    def test_c6_defaults_to_replace_and_can_explicitly_preserve_atmosphere(self):
+        self.assertEqual(self.load()['atmosphere_policy'], 'replace')
+        self.value['atmosphere_policy'] = 'preserve'
+        self.assertEqual(self.load()['atmosphere_policy'], 'preserve')
+
+    def test_invalid_atmosphere_policy_is_rejected(self):
+        for value in (None, True, 'rain', 'REPLACE', {}):
+            self.value['atmosphere_policy'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'atmosphere_policy'):
+                self.load()
+
     def test_rejects_writing_anywhere_inside_game_or_tools_install(self):
         for path in ('game/new-run', 'tools/../game/left4dead2/new-run', 'tools/new-run'):
             with self.subTest(path=path):
@@ -92,7 +103,7 @@ class RunIdentityTests(unittest.TestCase):
             baseline, captured, log = root / 'base.bsp', root / 'capture.bsp', root / 'capture.log'
             baseline.write_bytes(b'baseline')
             captured.write_bytes(b'capture')
-            log.write_text('LMC_abc_MAP=mctest\nLMC_abc_CAPTURE_REQUESTED\n')
+            log.write_text('LMC_ABC_MAP=mctest\nLMC_ABC_GUARD_PASSED_CAPTURE_NOT_VERIFIED\nLMC_ABC_CAPTURE_REQUESTED\n')
             report = {'schema_version': 1, 'input_inventory': [], 'tracked_outputs': [], 'run_id': 'abc',
                       'status': 'capture_installed', 'map_name': 'c2m1_highway', 'capture_alias': 'mctest',
                       'offline_map': str(baseline), 'config': {'tools_dir': str(root), 'game_dir': str(root)}}
@@ -116,6 +127,23 @@ class RunIdentityTests(unittest.TestCase):
         struct.pack_into('<i', altered, 24, 999)
         with self.assertRaisesRegex(ValueError, 'protected'):
             audit_repacked(original, bytes(altered), {})
+
+    def test_import_rejects_unbound_request_before_reading_capture_resources(self):
+        from l4d2_bsp.workflow import finish
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            baseline, captured, log = root/'base.bsp', root/'capture.bsp', root/'capture.log'
+            baseline.write_bytes(b'baseline')
+            captured.write_bytes(b'capture')
+            log.write_text('abc mctest OTHER_CAPTURE_REQUESTED\n')
+            report = {'schema_version': 1, 'input_inventory': [], 'tracked_outputs': [], 'run_id': 'abc',
+                      'status': 'capture_installed', 'map_name': 'c2m1_highway', 'capture_alias': 'mctest',
+                      'offline_map': str(baseline), 'config': {}}
+            (root/'run.json').write_text(json.dumps(report))
+            with patch('l4d2_bsp.reflections.capture_replacements', side_effect=AssertionError('unbound log accepted')):
+                with self.assertRaisesRegex(ValueError, 'marker|guard'):
+                    finish(root, captured, log)
 
     def test_addon_metadata_identifies_original_map_and_phase(self):
         from l4d2_bsp.workflow import addon_info

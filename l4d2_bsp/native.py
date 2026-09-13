@@ -181,25 +181,31 @@ def _vhv_header(data: bytes) -> bytes:
     return bytes(topology)
 
 
-def _audit_pak(before: bytes, after: bytes) -> dict:
+def _audit_pak(before: bytes, after: bytes, model_evidence=None) -> dict:
     old, new = _pak_entries(before), _pak_entries(after)
     removed, added = sorted(old.keys() - new.keys()), sorted(new.keys() - old.keys())
     if removed:
         raise ValueError(f'PAK entries removed: {removed}')
     changed = sorted(name for name in old if old[name] != new[name])
+    migrations = []
     for name in changed + added:
         if not _NATIVE_VHV.fullmatch(name):
             raise ValueError(f'Non-lighting PAK entry changed or added: {name}')
         header = _vhv_header(new[name])
         if name in old and (header != _vhv_header(old[name]) or len(old[name]) != len(new[name])):
-            raise ValueError(f'VHV topology changed: {name}')
+            if model_evidence is None:
+                raise ValueError(f'VHV topology changed: {name}')
+            migrations.append(model_evidence.validate(name, old[name], new[name]))
     return dict(pak_crc_verified=True, pak_added=added, pak_removed=removed,
-                changed_pak_entries=changed, pak_entry_count=len(new))
+                changed_pak_entries=changed, pak_entry_count=len(new),
+                model_lighting_migrations=migrations)
 
 
-def audit_bake(before: bytes, after: bytes) -> dict:
+def audit_bake(before: bytes, after: bytes, *, model_evidence=None) -> dict:
     """Reject any change outside understood lighting fields; never rewrite bytes."""
     old, new = BspFile.parse(before), BspFile.parse(after)
+    if model_evidence is not None and model_evidence.input_sha256 != hashlib.sha256(before).hexdigest():
+        raise ValueError('Model lighting evidence belongs to another bake input')
     if (old.version, old.revision) != (new.version, new.revision):
         raise ValueError('BSP version or revision changed')
     changed = []
@@ -230,7 +236,7 @@ def audit_bake(before: bytes, after: bytes) -> dict:
                   entities_byte_identical=True, protected_lumps_unchanged=True,
                   face_topology_unchanged=True, hdr_face_count=len(left) // 56)
     report.update(_audit_game(old, new))
-    report.update(_audit_pak(old.lump_bytes(40), new.lump_bytes(40)))
+    report.update(_audit_pak(old.lump_bytes(40), new.lump_bytes(40), model_evidence))
     return report
 
 

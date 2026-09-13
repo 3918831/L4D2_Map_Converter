@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib
 import struct
+import zlib
 
 
 def vpk_index(path):
@@ -47,6 +48,7 @@ def vpk_index(path):
                 cursor += 18
                 if end != 0xffff or cursor+preload > size:
                     raise ValueError('Invalid VPK entry terminator or preload span')
+                preload_offset = (12 if version == 1 else 28) + cursor
                 cursor += preload
                 name = (('' if directory == ' ' else directory+'/') + basename +
                         ('' if extension == ' ' else '.'+extension)).replace('\\', '/').lower()
@@ -54,11 +56,42 @@ def vpk_index(path):
                     raise ValueError(f'Duplicate VPK entry: {name}')
                 result[name] = dict(package=str(path.resolve()), vpk_version=version,
                     crc32=f'{crc:08x}', preload_bytes=preload, archive_index=archive,
+                    preload_offset=preload_offset,
                     offset=offset, length=length, tree_size=size,
                     file_data_section_size=file_data_section_size)
     if cursor != size:
         raise ValueError('Unexpected bytes after VPK tree terminator')
     return result
+
+
+def read_vpk_entry(entry):
+    """Read one indexed resource, including preload, with bounds and CRC checks."""
+    path = Path(entry['package'])
+    preload, length = entry['preload_bytes'], entry['length']
+    if preload + length > 128*1024*1024:
+        raise ValueError('Model resource exceeds supported 128 MiB limit')
+    header_size = 12 if entry['vpk_version'] == 1 else 28
+    start = entry['preload_offset']
+    if start < header_size or start + preload > header_size + entry['tree_size']:
+        raise ValueError('Invalid VPK preload range')
+    with path.open('rb') as stream:
+        stream.seek(start)
+        data = stream.read(preload)
+    if length:
+        internal = entry['archive_index'] == 0x7fff
+        payload = path if internal else path.with_name(path.name[:-7]+f"{entry['archive_index']:03d}.vpk")
+        if (internal and entry['vpk_version'] == 2 and
+                entry['offset'] + length > entry['file_data_section_size']):
+            raise ValueError('VPK payload outside file data section')
+        start = entry['offset'] + (header_size + entry['tree_size'] if internal else 0)
+        with payload.open('rb') as stream:
+            stream.seek(start)
+            data += stream.read(length)
+    if len(data) != preload + length:
+        raise ValueError('Truncated VPK resource payload')
+    if zlib.crc32(data) & 0xffffffff != int(entry['crc32'], 16):
+        raise ValueError('VPK resource CRC mismatch')
+    return data
 
 
 def lookup_resources(roots, names):

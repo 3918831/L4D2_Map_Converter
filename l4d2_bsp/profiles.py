@@ -3,7 +3,8 @@
 The byte API validates internal map/controller expectations. Its caller must
 also validate input filenames against ``profile_spec``; BSP entity data does
 not provide an authoritative root map filename. C2 delegates unchanged to the
-previously accepted strict converter. C6 preserves its original storm system.
+previously accepted strict converter. C6 replaces its atmosphere by default;
+the explicit preserve policy retains the original storm system.
 """
 import struct
 
@@ -23,11 +24,11 @@ def profile_spec(profile):
                 runtime_validation='accepted_reference' if profile == 'c2-c5' else 'pending_user_test')
 
 
-def inspect_profile_support(data, reference, *, profile, kind='bsp', reference_kind='bsp'):
+def inspect_profile_support(data, reference, *, profile, kind='bsp', reference_kind='bsp', atmosphere_policy=None):
     """Dry-run the complete transfer in memory and report unsupported inputs."""
     try:
         spec = profile_spec(profile)
-        _, report = transfer_style(data, reference, profile=profile, kind=kind, reference_kind=reference_kind)
+        _, report = transfer_style(data, reference, profile=profile, kind=kind, reference_kind=reference_kind, atmosphere_policy=atmosphere_policy)
     except ValueError as exc:
         return dict(supported=False, profile=profile, reason=str(exc))
     return dict(report, supported=True, requested_profile=profile, source_map=spec['source_map'],
@@ -69,17 +70,22 @@ def _startup(entities, target, action, *, optional=False):
     return i, j, parts
 
 
-def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'):
+def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp', atmosphere_policy=None):
     """Apply an explicitly selected profile, preserving all non-entity payloads.
 
-    C6 startup maxima change 8 -> 5 (or retain 5 on reapplication). The only
-    inserted I/O is global bright-pixel percentage 5 at map spawn. Storm flash,
-    storm fog transitions, triggers, checkpoint correction, origins, brush
-    references, skybox scale/orientation and all other outputs remain original.
-    Fog controller distances/density/timing are preserved, including indoors.
+    C6 replace copies the target outdoor fog into all source fog controllers,
+    then removes explicitly owned weather and overrides local postprocessing.
+    Preserve retains legacy storm timing and local fog ranges. Neither policy
+    imports reference geometry or gameplay outputs.
     """
     profile_spec(profile)
+    if atmosphere_policy is None:
+        atmosphere_policy = 'replace' if profile == 'c6-c5' else 'preserve'
+    if atmosphere_policy not in ('replace', 'preserve'):
+        raise ValueError('atmosphere_policy must be replace or preserve')
     if profile == 'c2-c5':
+        if atmosphere_policy != 'preserve':
+            raise ValueError('atmosphere_policy=replace currently supports c6-c5 only')
         return transfer_c5_style(data, reference, kind=kind, reference_kind=reference_kind)
     parsed, text, entities = _read(data, kind)
     _, _, donor = _read(reference, reference_kind)
@@ -135,8 +141,8 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
     copy_fields('light_directional', ('_light', '_lightHDR', '_lightscaleHDR', 'angles', 'pitch', 'SunSpreadAngle'))
     copy_fields('shadow_control', ('color', 'angles', 'distance'))
     for name, _, _ in roles:
-        copy_fields('env_fog_controller', ('fogcolor', 'fogcolor2', 'HDRColorScale'), name,
-                    'foginteriorcontroller' if name == 'foginteriorcontroller' else 'fog_master')
+        copy_fields('env_fog_controller', FOG_FIELDS if atmosphere_policy == 'replace' else ('fogcolor', 'fogcolor2', 'HDRColorScale'), name,
+                    'foginteriorcontroller' if atmosphere_policy == 'preserve' and name == 'foginteriorcontroller' else 'fog_master')
     copy_fields('sky_camera', tuple(k for k in FOG_FIELDS if k not in ('farz', 'foglerptime')))
     copy_fields('color_correction', ('filename',), 'color_correction_main')
     intro = [e for e in entities if e.one('targetname') == 'color_correction_intro']
@@ -241,7 +247,7 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
                        for i, e in enumerate(entities) for p in e.pairs
                        if p.key.startswith('On') and e.one('targetname') in
                        ('relay_tonemap_flash', 'relay_storm_blendin', 'relay_storm_blendout')]
-    return output, dict(profile='c6-to-c5-globals-v1', source_sha256=sha256(data),
+    report = dict(profile='c6-to-c5-globals-v1', atmosphere_policy=atmosphere_policy, source_sha256=sha256(data),
         reference_sha256=sha256(reference), output_sha256=sha256(output), changes=changes,
         added_outputs=added_outputs, added_entity_classes=added_classes,
         entity_counts=[len(entities), len(after)], all_io_unchanged=io_signature(entities) == io_signature(after),
@@ -254,3 +260,13 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
                      'Fog controller distances/density/timing and checkpoint correction retained',
                      'New sun and other visual edits require user runtime validation',
                      'No geometry/local-light import; no full model lighting or cubemap recapture'])
+    if atmosphere_policy == 'replace':
+        from .weather import replace_c6_weather
+        output, weather = replace_c6_weather(output, reference, kind=kind, reference_kind=reference_kind)
+        report.update(profile='c6-to-c5-clear-v2', output_sha256=sha256(output), weather=weather,
+                      entity_counts=[len(entities), weather['entity_counts'][1]],
+                      changes=changes + weather['changes'], retained_storm_visual_outputs=[],
+                      protected_io_count=weather['protected_io_count'],
+                      limitations=weather['limitations'])
+        report['all_io_unchanged'] = report['all_io_unchanged'] and not weather['removed_outputs']
+    return output, report

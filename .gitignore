@@ -10,6 +10,9 @@ __pycache__/
 .venv/
 venv/
 *.local.json
+# Personal copies of the portable *.example.json templates.
+/examples/*.json
+!/examples/*.example.json
 /config.json
 /.superpowers/
 /.worktrees/

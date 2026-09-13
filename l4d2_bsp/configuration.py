@@ -17,7 +17,7 @@ def load_config(path):
     value = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(value, dict):
         raise ValueError('Configuration must be a JSON object')
-    unknown = set(value) - set(PATH_KEYS) - {'profile', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots'}
+    unknown = set(value) - set(PATH_KEYS) - {'profile', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy'}
     if unknown:
         raise ValueError(f'Unknown configuration keys: {sorted(unknown)}')
     if value.get('profile') not in MAPS:
@@ -29,6 +29,12 @@ def load_config(path):
         return (path.parent / raw).resolve()
 
     cfg = {'profile': value['profile'], 'config_file': path}
+    policy = value.get('atmosphere_policy', 'replace' if cfg['profile'] == 'c6-c5' else 'preserve')
+    if not isinstance(policy, str) or policy not in ('replace', 'preserve'):
+        raise ValueError('atmosphere_policy must be replace or preserve')
+    if cfg['profile'] != 'c6-c5' and policy != 'preserve':
+        raise ValueError('atmosphere_policy=replace currently supports c6-c5 only; C2 retains its accepted profile')
+    cfg['atmosphere_policy'] = policy
     for key in PATH_KEYS:
         if key == 'exclude' and not value.get(key):
             cfg[key] = None

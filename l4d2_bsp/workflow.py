@@ -30,7 +30,7 @@ def addon_info(map_name, phase):
     if map_name not in MAPS.values() or phase not in ('offline', 'final'):
         raise ValueError('Unsupported addon metadata identity')
     return (f'"AddonInfo"\n{{\n "addonSteamAppID" "550"\n "addontitle" "Map Converter {map_name} {phase}"\n'
-            f' "addonversion" "0.1.0"\n "addonauthor" "L4D2 Map Converter"\n'
+            f' "addonversion" "0.2.0"\n "addonauthor" "L4D2 Map Converter"\n'
             f' "addonDescription" "C5 global style; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
 
 
@@ -41,11 +41,17 @@ def load_run(root):
         raise ValueError('Unsupported run manifest version')
     verify_inventory(result['input_inventory'])
     verify_inventory(result.get('tracked_outputs', []))
+    if result.get('model_resource_inventory'):
+        from .model_lighting import verify_resource_inventory
+        from .native import _pak_entries
+        snapshot = BspFile.parse((root/'bake/input.bsp.snapshot').read_bytes())
+        verify_resource_inventory(result['config']['resource_roots'],
+                                  _pak_entries(snapshot.lump_bytes(40)), result['model_resource_inventory'])
     return result
 
 
 def status_summary(report):
-    summary = {key: report.get(key) for key in ('run_id', 'map_name', 'profile', 'status', 'error', 'last_capture_import_error')} | {
+    summary = {key: report.get(key) for key in ('run_id', 'map_name', 'profile', 'atmosphere_policy', 'status', 'error', 'last_capture_import_error')} | {
         'runtime_accepted': False,
         'acceptance_note': 'Build/capture import verification is not user runtime acceptance. Record your observations separately.'}
     for key in ('offline_package', 'final_package'):
@@ -62,28 +68,32 @@ def check(config_path):
     inspection = inspect_bytes(source)
     if any(key.endswith('_error') for key in inspection):
         raise ValueError(f'Input BSP failed structural inspection: {inspection}')
-    output, audit = transfer_style(source, donor, profile=cfg['profile'])
+    output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
     modes, mode_audits = {}, {}
     for key, path in cfg['mode_lmps'].items():
-        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp')
+        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
     # Check concrete new style assets. Complete material dependency closure is
     # not claimed; compiler diagnostics and user loading remain further gates.
     names = ['materials/correction/cc_c5_main.raw', 'materials/sprites/light_glow02_add_noz.vmt']
     names.extend(f'materials/skybox/sky_l4d_c5_1_hdr{face}.vmt' for face in ('bk', 'dn', 'ft', 'lf', 'rt', 'up'))
+    if cfg['profile'] == 'c6-c5' and cfg['atmosphere_policy'] == 'replace':
+        from .weather import SOUNDSCAPE_RESOURCES
+        names.extend(SOUNDSCAPE_RESOURCES)
     assets = lookup_resources(cfg['resource_roots'], names)
     missing = [name for name, item in assets['resources'].items() if not item['found']]
     if missing:
         raise ValueError(f'Missing C5 style resources; check resource_roots/full installation: {missing}')
-    report = {'profile': cfg['profile'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
+    report = {'profile': cfg['profile'], 'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
               'mode_styles': mode_audits, 'style_resources': assets,
               'limitations': ['Resource roots are lookup candidates; game mount order must be checked in game.',
-                              'C6 preserves authored storm/weather events and requires independent runtime testing.',
+                              'C6 atmosphere follows atmosphere_policy; every new output requires independent runtime testing.',
                               'Only HDR, these two bounded profiles, and observed native resource formats are supported.']}
     return cfg, report, output, modes
 
 
 def build(config_path):
     from .native import audit_bake, native, package_files
+    from .model_lighting import ModelLightingEvidence
     cfg, preflight, prepared, modes = check(config_path)
     root = cfg['output_dir']
     if root.exists():
@@ -92,7 +102,7 @@ def build(config_path):
     root.mkdir(parents=True, exist_ok=False)
     run_id = uuid.uuid4().hex[:16]
     report = {'schema_version': 1, 'run_id': run_id, 'created_at': datetime.now().astimezone().isoformat(),
-              'status': 'preparing', 'profile': cfg['profile'], 'map_name': preflight['map_name'],
+              'status': 'preparing', 'profile': cfg['profile'], 'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': preflight['map_name'],
               'config': cfg, 'input_inventory': inventory, 'tracked_outputs': [], 'preflight': preflight}
     manifest = root / 'run.json'
     write_json(manifest, report)
@@ -104,6 +114,9 @@ def build(config_path):
         snapshot.write_bytes(prepared)
         bsp = compile_dir / (name + '.bsp')
         bsp.write_bytes(prepared)
+        print('Checking static-prop model versions and snapshotting model resources.', flush=True)
+        model_evidence = ModelLightingEvidence(prepared, cfg['resource_roots'])
+        report['model_resource_inventory'] = model_evidence.inventory()
         report['status'] = 'baking'
         report['vrad_command'] = ['-game', str(cfg['game_dir']), '-novconfig', '-hdr', '-bounce', '4',
             '-StaticPropLighting', '-StaticPropPolys', '-TextureShadows', '-threads', str(cfg['threads']), '-low', str(bsp)]
@@ -112,7 +125,8 @@ def build(config_path):
         native(cfg['tools_dir'] / 'vrad.exe', report['vrad_command'], cwd=compile_dir,
                log=compile_dir / 'vrad.log', timeout=cfg['timeout_seconds'])
         compiled = bsp.read_bytes()
-        report['bake_audit'] = audit_bake(prepared, compiled)
+        model_evidence.verify_current()
+        report['bake_audit'] = audit_bake(prepared, compiled, model_evidence=model_evidence)
         log = (compile_dir / 'vrad.log').read_text(encoding='utf-8', errors='replace')
         report['compiler_diagnostics'] = [line for line in log.splitlines() if re.search(r'error|warning|not found|could not|couldn.t', line, re.I)]
         if any(re.search(r'Error loading studio model|Error!.*(?:material|model)|could not open.*(?:mdl|vmt)', line, re.I) for line in report['compiler_diagnostics']):
@@ -130,6 +144,7 @@ def build(config_path):
         report['tracked_outputs'] = [tracked(snapshot), tracked(bsp), tracked(package['vpk'])]
         report['tracked_outputs'].extend(tracked(Path(package['vpk']).with_suffix('') / item['name']) for item in package['files'])
         verify_inventory(inventory)
+        model_evidence.verify_current()
         report['status'] = 'offline_ready'
         report['reflection_strategy'] = 'original sampled/default reflection textures preserved; not recaptured'
         write_json(manifest, report)
@@ -209,22 +224,20 @@ def finish(root, capture_path, log_path):
 
 def _finish(root, capture_path, log_path):
     from .native import native, package_files
-    from .reflections import capture_replacements
+    from .reflections import audit_capture_log, capture_replacements
     root = Path(root).resolve()
     report = load_run(root)
     if report['status'] not in ('capture_prepared', 'capture_installed'):
         raise ValueError('finish-capture requires a prepared capture run')
     captured = Path(capture_path).read_bytes()
     log = Path(log_path).read_bytes()
-    # Unique marker is required for provenance, and generated controls emit
-    # REQUESTED only after guards. Pixel/resource checks remain authoritative.
     log_text = log.decode('utf-8', errors='replace')
-    if report['run_id'] not in log_text.lower() or report['capture_alias'] not in log_text.lower() or 'CAPTURE_REQUESTED' not in log_text:
-        raise ValueError('Capture log lacks this run/map/request marker; supply the log from the generated guarded controls')
+    log_audit = audit_capture_log(log_text, alias=report['capture_alias'], marker='lmc_' + report['run_id'])
     if re.search(r"couldn't get.*(?:hdr|cubemap)|unable.*maps[/\\]" + re.escape(report['capture_alias']), log_text, re.I):
         raise ValueError('Capture log reports missing reflection resources; repair the alias installation and restart before capture')
     baseline = Path(report['offline_map']).read_bytes()
     replacements, audit = capture_replacements(baseline, captured, map_name=report['map_name'], alias=report['capture_alias'])
+    audit['runtime_log'] = log_audit
     parent = root / 'reflection-import'
     parent.mkdir(exist_ok=True)
     number = 1

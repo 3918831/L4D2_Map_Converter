@@ -205,14 +205,67 @@ def capture_replacements(baseline: bytes, captured: bytes, *, map_name: str,
                        'Binary provenance and finite RGB do not establish visual correctness; original-name runtime validation remains manual.']}
 
 
+def audit_capture_log(text: str, *, alias: str, marker: str) -> dict:
+    """Audit one run-bound guarded request, not native capture completion.
+
+    A native reload can leave a zero-player session whose later checks refuse.
+    Those refusals do not undo an earlier request. The captured BSP still needs
+    capture_replacements; progress messages and logs cannot establish its bytes.
+    Multiple requests are ambiguous because the log cannot bind BSP pixels to
+    one request. Keep separate capture attempts instead of guessing which won.
+    """
+    for kind, value in [('alias', alias), ('marker', marker)]:
+        if not isinstance(value, str) or not _TOKEN.fullmatch(value):
+            raise ValueError(f'{kind} must be a lowercase token')
+    prefix = marker.upper()
+    map_matches = guarded = False
+    request_line = None
+    refusals = []
+    reloaded = False
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if line.startswith('---- Host_NewGame') or line.startswith('Host_NewGame on map '):
+            map_matches = guarded = False
+            reloaded = reloaded or request_line is not None
+        if line == f'{prefix}_LOAD_REQUESTED':
+            map_matches = guarded = False
+        if line.startswith(f'{prefix}_MAP='):
+            map_matches = line == f'{prefix}_MAP={alias}'
+            guarded = False
+        if f'{prefix}_REFUSED:' in line:
+            refusals.append({'line': number, 'message': line})
+            guarded = False
+        if line == f'{prefix}_GUARD_PASSED_CAPTURE_NOT_VERIFIED':
+            guarded = map_matches
+        if line == f'{prefix}_CAPTURE_REQUESTED':
+            if request_line is not None:
+                raise ValueError('Capture log has multiple requests; BSP provenance is ambiguous. Use a fresh capture run')
+            if not guarded:
+                raise ValueError('Capture request lacks this run/map guard sequence; supply the generated control log')
+            request_line = number
+            guarded = False
+    if request_line is None:
+        raise ValueError('Capture log lacks this run/map/request marker; a refused check is not a capture request')
+    return {'marker': marker, 'alias': alias, 'request_line': request_line,
+            'refusals_before_request': [item for item in refusals if item['line'] < request_line],
+            'refusals_after_request': [item for item in refusals if item['line'] > request_line],
+            'native_reload_after_request': reloaded, 'capture_verified': False,
+            'limitations': ['Guard markers establish only the requested starting state.',
+                           'A post-request refusal does not prove the initial capture failed.',
+                           'Strict BSP/resource audit and manual visual acceptance remain required.']}
+
+
 def capture_controls(*, map_name: str, alias: str, marker: str,
                      exposure_max: float = 5) -> dict[str, bytes]:
     """Generate manual load/check/capture/finish controls with a per-run guard.
 
     Check and capture read actual tonemap entity NetProps. The user must set
     mat_specular 0 and wait for material reload before running the check/capture.
-    Capture only queues the native command once per map session; finishing merely
-    restores specular and prints state. A successful offline audit is still needed.
+    Launch the full game process with -insecure before loading; sv_lan scopes the
+    session to LAN and sv_cheats permits commands, neither verifies process flags.
+    Capture only queues the native command once per map session; a native reload
+    resets that guard. Archive before retrying. Finishing merely restores specular
+    and prints state. A successful offline audit is still needed.
     """
     _names(map_name, alias)
     if not isinstance(marker, str) or not _TOKEN.fullmatch(marker):
@@ -226,6 +279,13 @@ local mapName = Director.GetMapName();
 printl("{prefix}_MAP=" + mapName);
 if (mapName != "{alias}")
     throw "{prefix}_REFUSED: expected exact alias {alias}";
+local lan = Convars.GetFloat("sv_lan");
+printl("{prefix}_LAN=" + lan);
+if (lan == null || lan != 1)
+    throw "{prefix}_REFUSED: use the local capture load CFG (sv_lan 1)";
+if (!("GetListenServerHost" in getroottable()) || GetListenServerHost() == null)
+    throw "{prefix}_REFUSED: local listen-server host must be connected; archive any earlier capture before retrying";
+// LAN and cheats do not prove -insecure. Verify launcher flags and status manually.
 local hdr = Convars.GetFloat("mat_hdr_level");
 local specular = Convars.GetFloat("mat_specular");
 printl("{prefix}_HDR=" + hdr + " SPECULAR=" + specular);
@@ -256,7 +316,7 @@ SendToConsole("buildcubemaps");
 '''
     common = f'fs_warning_level 0\ncon_logfile {marker}_capture.log\n'
     files = {
-        f'cfg/{marker}_load.cfg': common + f'echo {prefix}_LOAD_REQUESTED\nsv_cheats 1\nmat_hdr_level 2\nmap {alias} coop\n',
+        f'cfg/{marker}_load.cfg': common + f'// Restart the normal launcher with process option -insecure before this CFG.\n// sv_lan and sv_cheats are not substitutes for -insecure.\necho {prefix}_LOAD_REQUESTED\nsv_lan 1\nsv_cheats 1\nmat_hdr_level 2\nmap {alias} coop\n',
         f'cfg/{marker}_check.cfg': common + f'status\nsv_cheats 1\nscript_execute {marker}_check\n',
         f'cfg/{marker}_capture.cfg': common + f'status\nsv_cheats 1\nscript_execute {marker}_capture\n',
         f'cfg/{marker}_finish.cfg': common + f'mat_specular 1\nmat_specular\nmat_hdr_level\nstatus\necho {prefix}_USER_FINISHED_CAPTURE_NOT_VERIFIED\n// Exit the game, then use collect-capture to archive the BSP and log.\n',

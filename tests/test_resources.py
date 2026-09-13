@@ -2,6 +2,7 @@ import struct
 import tempfile
 from pathlib import Path
 import unittest
+import zlib
 
 from l4d2_bsp.resources import lookup_resources, vpk_index
 
@@ -20,6 +21,24 @@ def vpk_fixture(names, version=1):
 
 
 class ResourceTests(unittest.TestCase):
+    def test_model_payload_reader_checks_preload_external_bytes_and_crc(self):
+        from l4d2_bsp import resources
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            path = root/'pak01_dir.vpk'
+            raw = vpk_fixture(['models/test.mdl']).replace(
+                struct.pack('<IHHIIH', 0, 4, 0x7fff, 0, 0, 0xffff),
+                struct.pack('<IHHIIH', zlib.crc32(b'DATATAIL'), 4, 1, 0, 4, 0xffff))
+            path.write_bytes(raw)
+            (root/'pak01_001.vpk').write_bytes(b'TAIL')
+            entry = vpk_index(path)['models/test.mdl']
+            reader = getattr(resources, 'read_vpk_entry', None)
+            self.assertIsNotNone(reader, 'VPK payload reader is required for model proof')
+            self.assertEqual(reader(entry), b'DATATAIL')
+            (root/'pak01_001.vpk').write_bytes(b'FAIL')
+            with self.assertRaisesRegex(ValueError, 'CRC'):
+                reader(entry)
+
     def test_v2_internal_payload_cannot_use_checksum_section(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

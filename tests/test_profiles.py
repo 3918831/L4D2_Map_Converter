@@ -33,7 +33,7 @@ class ProfileTests(unittest.TestCase):
         self.transfer = transfer_style
 
     def run_c6(self, source=None, reference=None, kind='bsp', reference_kind='bsp'):
-        return self.transfer(wrap(source or c6_text(), kind), wrap(reference or donor_text(), reference_kind), profile='c6-c5', kind=kind, reference_kind=reference_kind)
+        return self.transfer(wrap(source or c6_text(), kind), wrap(reference or donor_text(), reference_kind), profile='c6-c5', kind=kind, reference_kind=reference_kind, atmosphere_policy='preserve')
 
     def test_c6_keeps_storm_gameplay_and_fog_distances(self):
         source = wrap(c6_text())
@@ -80,7 +80,7 @@ class ProfileTests(unittest.TestCase):
         for kind in ('bsp', 'lmp'):
             with self.subTest(kind=kind):
                 first, _ = self.run_c6(kind=kind, reference_kind='lmp')
-                second, report = self.transfer(first, wrap(donor_text(), 'lmp'), profile='c6-c5', kind=kind, reference_kind='lmp')
+                second, report = self.transfer(first, wrap(donor_text(), 'lmp'), profile='c6-c5', kind=kind, reference_kind='lmp', atmosphere_policy='preserve')
                 self.assertEqual(first, second)
                 self.assertEqual(report['changes'], [])
                 self.assertEqual(report['added_outputs'], [])
@@ -132,7 +132,7 @@ class ProfileTests(unittest.TestCase):
 
     def test_profile_support_inspection_reports_failures_without_writing(self):
         from l4d2_bsp.profiles import inspect_profile_support, profile_spec
-        report = inspect_profile_support(wrap(c6_text()), wrap(donor_text()), profile='c6-c5')
+        report = inspect_profile_support(wrap(c6_text()), wrap(donor_text()), profile='c6-c5', atmosphere_policy='preserve')
         self.assertTrue(report['supported'])
         self.assertFalse(inspect_profile_support(wrap(style_text()), wrap(donor_text()), profile='c6-c5')['supported'])
         self.assertEqual(profile_spec('c6-c5')['source_map'], 'c6m1_riverbank')

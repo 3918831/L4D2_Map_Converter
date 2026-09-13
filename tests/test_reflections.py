@@ -192,6 +192,68 @@ class ReflectionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.api.capture_controls(**options)
 
+    def test_load_config_sets_local_session_before_loading_alias(self):
+        files = self.api.capture_controls(map_name='source', alias='capture_run', marker='run123')
+        commands = [line.split() for line in files['cfg/run123_load.cfg'].decode().splitlines()
+                    if line and not line.startswith('//')]
+        self.assertIn(['sv_lan', '1'], commands)
+        self.assertLess(commands.index(['sv_lan', '1']), commands.index(['map', 'capture_run', 'coop']))
+        self.assertEqual(commands[-1], ['map', 'capture_run', 'coop'])
+
+
+class CaptureLogTests(unittest.TestCase):
+    valid = ('RUN123_MAP=capture_run\n'
+             'RUN123_GUARD_PASSED_CAPTURE_NOT_VERIFIED\n'
+             'RUN123_CAPTURE_REQUESTED\n')
+
+    def audit(self, text):
+        from l4d2_bsp import reflections
+        self.assertTrue(hasattr(reflections, 'audit_capture_log'), 'run-bound capture log audit is required')
+        return reflections.audit_capture_log(text, alias='capture_run', marker='run123')
+
+    def test_request_with_matching_map_and_guard_is_not_capture_verification(self):
+        report = self.audit(self.valid)
+        self.assertEqual(report['request_line'], 3)
+        self.assertFalse(report['capture_verified'])
+        self.assertEqual(report['refusals_after_request'], [])
+
+    def test_post_request_reload_refusal_preserves_first_request_evidence(self):
+        report = self.audit(self.valid + 'bounce: 1/1 sample: 48/48\n'
+            '---- Host_NewGame ----\nRUN123_MAP=capture_run\n'
+            'AN ERROR HAS OCCURED [RUN123_REFUSED: unexpected actual exposure state]\n')
+        self.assertTrue(report['native_reload_after_request'])
+        self.assertEqual(report['refusals_before_request'], [])
+        self.assertEqual(report['refusals_after_request'][0]['line'], 7)
+        self.assertFalse(report['capture_verified'])
+
+    def test_refusal_without_request_never_counts_as_capture(self):
+        with self.assertRaisesRegex(ValueError, 'request'):
+            self.audit('RUN123_MAP=capture_run\nRUN123_REFUSED: unexpected actual exposure state\n')
+
+    def test_refused_check_can_be_recovered_by_fresh_guard_before_request(self):
+        report = self.audit('RUN123_MAP=capture_run\nRUN123_REFUSED: set mat_specular 0\n' + self.valid)
+        self.assertEqual(report['request_line'], 5)
+        self.assertEqual(report['refusals_before_request'][0]['line'], 2)
+
+    def test_substrings_other_runs_wrong_alias_and_missing_guard_are_rejected(self):
+        for text in [self.valid.replace('RUN123_CAPTURE_REQUESTED', 'RUN999_CAPTURE_REQUESTED'),
+                     self.valid.replace('capture_run', 'capture_run_old'),
+                     self.valid.replace('RUN123_GUARD_PASSED_CAPTURE_NOT_VERIFIED\n', ''),
+                     self.valid.replace('RUN123_CAPTURE_REQUESTED', 'echo RUN123_CAPTURE_REQUESTED'),
+                     self.valid.replace('RUN123_CAPTURE_REQUESTED', 'RUN123_CAPTURE_REQUESTED_OLD')]:
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'request|guard'):
+                self.audit(text)
+
+    def test_refusal_or_reload_between_guard_and_request_invalidates_guard(self):
+        for event in ['RUN123_REFUSED: invalid state', '---- Host_NewGame ----',
+                      'RUN123_MAP=other_map', 'RUN123_LOAD_REQUESTED']:
+            with self.subTest(event=event), self.assertRaisesRegex(ValueError, 'guard'):
+                self.audit(self.valid.replace('RUN123_CAPTURE_REQUESTED', event + '\nRUN123_CAPTURE_REQUESTED'))
+
+    def test_multiple_requests_are_ambiguous_even_across_map_sessions(self):
+        with self.assertRaisesRegex(ValueError, 'multiple|ambiguous'):
+            self.audit(self.valid + '---- Host_NewGame ----\n' + self.valid)
+
 
 if __name__ == '__main__':
     unittest.main()

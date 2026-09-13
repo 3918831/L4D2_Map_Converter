@@ -1,6 +1,6 @@
 # L4D2 Map Converter
 
-在原 BSP 的副本上迁移 C5 全局视觉风格，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。无需 VMF、反编译、VBSP 或 VVIS。
+在原 BSP 的副本上迁移 C5 视觉风格，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。0.2.0 的 C6 默认替换原有天气及局部氛围。无需 VMF、反编译、VBSP 或 VVIS。
 
 这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。游戏、地图资源和官方 `vrad.exe`、`bspzip.exe`、`vpk.exe` 由使用者的本机安装提供；发行包不包含 Python 运行环境、Valve 工具或游戏素材。
 
@@ -9,10 +9,10 @@
 | 配置 | 来源 → 参考 | 验证范围 |
 |---|---|---|
 | `c2-c5` | C2M1 Highway → C5M1 Waterfront | 历史 18 号 HDR 成果已获用户验收；新工作流每次构建仍需独立检查 |
-| `c6-c5` | C6M1 Riverbank → C5M1 Waterfront | 基础 BSP 和三模式 LMP 静态检查通过；实机画面、反射捕获和玩法验收待用户独立测试 |
+| `c6-c5` | C6M1 Riverbank → C5M1 Waterfront | 默认 `replace` 晴天；可选 `preserve` 旧天气。基础与三模式实体检查、天气分支保护和幂等性已验证；新包仍需独立实机验收 |
 | 其他官方图、自定义图、其他参考天气 | — | 尚不支持 |
 
-C6 配置迁移全局色彩、天空和光照等字段，**保留原有风暴、雨和闪电/曝光闪烁事件**，不等于将整张图变成完全无雨的 C5 晴天。结构审计通过也不等于完整战役流程通过。
+C6 默认 **覆盖原暴雨、雷声、风暴/闪电曝光、局部雾与后处理、检查点调色、雨声环境音**。建筑、物件、局部灯光/材质、碰撞、NAV 和无关推进事件保留；例如新娘 Witch 仍触发尸潮，只取消风暴分支。设置 `"atmosphere_policy": "preserve"` 可使用旧行为。当前是受限 C6 适配，并非任意地图识别器；结构审计通过也不等于完整战役流程通过。
 
 ## 两种输出
 
@@ -28,6 +28,7 @@ C6 配置迁移全局色彩、天空和光照等字段，**保留原有风暴、
 ```powershell
 python --version
 python -m unittest discover -s tests -v
+if (Test-Path -LiteralPath config.local.json) { throw '配置已存在；按中文指南第 2.2 节迁移，不要覆盖旧运行的配置。' }
 Copy-Item -LiteralPath examples/c6-c5.example.json -Destination config.local.json
 notepad config.local.json
 ```
@@ -39,7 +40,9 @@ python -m l4d2_bsp.workflow check --config config.local.json
 python -m l4d2_bsp.workflow build --config config.local.json
 ```
 
-完整步骤，包括 C6 输入位置、离线包安装、游戏采样、故障处理和回退，见 [中文使用指南](docs/guide.zh-CN.md)。第一次 C6 测试前请读完采样交接部分；它包含必须等待开场、材质重载和原生采样完成的步骤。
+完整步骤，包括 C6 输入位置、旧天气运行迁移、离线包安装、游戏采样、故障处理和回退，见 [中文使用指南](docs/guide.zh-CN.md)。采样须用正常启动器带 `-insecure` 完整重启，并核对实际游戏进程参数；原生采样后会重载地图，不能因重连拒绝就重复采样或删除插件。
+
+0.1.0 用户若在 C6 构建中遇到 `VHV topology changed`，请使用当前版本并按指南第 2.1 节重试。修复根据当前模型资源核验旧光照缓存的版本变化，保留原有地图结构保护。从保留天气的旧运行升级到晴天，按第 2.2 节使用新配置/输出重新构建。
 
 | 文档 | 内容 |
 |---|---|
