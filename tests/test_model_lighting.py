@@ -213,12 +213,14 @@ class ModelLightingTests(unittest.TestCase):
 
     def test_build_uses_model_proof_and_records_resource_identity(self):
         from l4d2_bsp.workflow import build
+        from l4d2_bsp.presets import load_preset
+        preset = load_preset()
         output = self.root/'run'
         nav = self.root/'test.nav'
         nav.write_bytes(b'nav')
         cfg = {'output_dir': output, 'profile': 'c6-c5', 'atmosphere_policy': 'replace', 'resource_roots': [self.root],
                'game_dir': self.root, 'tools_dir': self.root, 'nav': nav, 'exclude': None,
-               'threads': 1, 'timeout_seconds': 10}
+               'threads': 1, 'timeout_seconds': 10, 'preset': preset.id, 'preset_file': preset.source_path}
         def bake(tool, args, **kwargs):
             Path(args[-1]).write_bytes(scene(456, (2, 1)))
             kwargs['log'].write_text('Finished fixture bake\n')
@@ -233,7 +235,7 @@ class ModelLightingTests(unittest.TestCase):
             archive.write_bytes(pak(list(payloads.items())))
             return {'vpk': str(archive), 'sha256': file_hash(archive),
                     'native_extract_verified': True, 'files': [{'name': n} for n in payloads]}
-        with patch('l4d2_bsp.workflow.check', return_value=(cfg, {'map_name': 'c6m1_riverbank'}, scene(), {})), \
+        with patch('l4d2_bsp.workflow.check', return_value=(cfg, {'map_name': 'c6m1_riverbank', 'preset': preset.metadata()}, scene(), {})), \
              patch('l4d2_bsp.workflow.input_inventory', return_value=[]), \
              patch('l4d2_bsp.native.native', bake), patch('l4d2_bsp.native.package_files', package):
             try:
@@ -242,6 +244,9 @@ class ModelLightingTests(unittest.TestCase):
                 self.fail(f'Workflow did not supply model evidence: {exc}')
         self.assertEqual(result['status'], 'offline_ready')
         self.assertEqual(len(result['model_resource_inventory']), 3)
+        self.assertEqual((output/'preset.json').read_bytes(), preset.source_path.read_bytes())
+        self.assertEqual(result['preset']['sha256'], preset.sha256)
+        self.assertIn(str((output/'preset.json').resolve()), [item['path'] for item in result['tracked_outputs']])
         from l4d2_bsp.workflow import load_run
         load_run(output)
         (self.root/MODEL).write_bytes(b'changed')

@@ -1,8 +1,7 @@
 {
-  "profile": "c2-c5",
+  "source_profile": "c2m1_highway",
+  "preset": "c5m1-daylight-v1",
   "source_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c2m1_highway.bsp",
-  "reference_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c5m1_waterfront.bsp",
-  "reference_lmp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c5m1_waterfront_l_0.lmp",
   "mode_lmps": {
     "h": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway_h_0.lmp",
     "l": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/update/maps/c2m1_highway_l_0.lmp",

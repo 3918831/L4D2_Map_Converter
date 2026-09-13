@@ -6,7 +6,8 @@ import zipfile
 
 
 PUBLIC_FILES = ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
-                'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md')
+                'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
+                'docs/presets.md', 'l4d2_bsp/preset_data/c5m1-daylight-v1.json')
 
 
 def build_release(root, output):
@@ -16,7 +17,7 @@ def build_release(root, output):
     paths = [root / name for name in PUBLIC_FILES]
     for path in paths:
         if not path.is_file():
-            raise FileNotFoundError(f'Missing public release document: {path}')
+            raise FileNotFoundError(f'Missing public release file: {path}')
     for directory in ('l4d2_bsp', 'tests', 'scripts'):
         paths.extend(sorted((root / directory).glob('*.py')))
     paths.extend(sorted((root / 'examples').glob('*.example.json')))

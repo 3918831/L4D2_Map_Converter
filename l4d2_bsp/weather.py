@@ -100,7 +100,13 @@ def _named(entities, classname, name):
 def replace_c6_weather(data, reference, *, kind='bsp', reference_kind='bsp'):
     """Apply after the C6 global transfer; leave every unowned byte/field intact."""
     parsed, text, entities = _read(data, kind)
-    _, _, donor = _read(reference, reference_kind)
+    from .style import _reference
+    donor, _, preset_metadata = _reference(reference, reference_kind)
+    soundscapes = SOUNDSCAPES
+    if preset_metadata:
+        mapping = reference.soundscape_mapping
+        soundscapes = {source: mapping['indoor' if source in ('c6m1_building_interior', 'c6m1_tent_int') else 'outdoor']
+                      for source in SOUNDSCAPES}
     names = {name for _, name, _ in WEATHER_NODES.values() if name}
     deleted, seen, removed_entities, removed_outputs = set(), set(), [], []
     for i, ent in enumerate(entities):
@@ -148,9 +154,9 @@ def replace_c6_weather(data, reference, *, kind='bsp', reference_kind='bsp'):
             replacements['filename'] = lut
         if cls == 'env_soundscape':
             value = ent.one('soundscape')
-            if value in SOUNDSCAPES:
-                replacements['soundscape'] = SOUNDSCAPES[value]
-            elif value not in SOUNDSCAPES.values():
+            if value in soundscapes:
+                replacements['soundscape'] = soundscapes[value]
+            elif value not in soundscapes.values():
                 raise ValueError(f'Unknown C6 atmosphere soundscape: {value}')
 
         for key in replacements:

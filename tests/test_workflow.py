@@ -32,6 +32,44 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(cfg['threads'], 4)
         self.assertFalse((self.root / 'runs').exists())
 
+    def use_preset(self):
+        for key in ('profile', 'reference_bsp', 'reference_lmp'):
+            self.value.pop(key)
+        self.value.update(source_profile='c6m1_riverbank', preset='c5m1-daylight-v1')
+
+    def test_preset_config_needs_no_donor_files_and_inventories_preset(self):
+        from l4d2_bsp.configuration import input_inventory
+        from l4d2_bsp.presets import load_preset
+        self.use_preset()
+        for path in (self.root / 'input').glob('c5*'):
+            path.unlink()
+        cfg = self.load()
+        self.assertEqual(cfg['profile'], 'c6-c5')
+        self.assertEqual(cfg['preset'], 'c5m1-daylight-v1')
+        self.assertIsNone(cfg['reference_bsp'])
+        preset = load_preset()
+        self.assertIn(str(preset.source_path), [x['path'] for x in input_inventory(cfg)])
+
+    def test_preset_config_rejects_mixed_and_missing_selectors(self):
+        original = dict(self.value)
+        for extra in ({'preset': 'c5m1-daylight-v1'}, {'source_profile': 'c6m1_riverbank'}):
+            self.value = original | extra
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, 'mix|together'):
+                self.load()
+        self.use_preset()
+        self.value.pop('preset')
+        with self.assertRaisesRegex(ValueError, 'together'):
+            self.load()
+
+    def test_preset_config_rejects_unknown_source_or_target(self):
+        self.use_preset()
+        self.value['preset'] = 'c7'
+        with self.assertRaisesRegex(ValueError, 'preset'):
+            self.load()
+        self.value.update(preset='c5m1-daylight-v1', source_profile='c7m1_docks')
+        with self.assertRaisesRegex(ValueError, 'source_profile'):
+            self.load()
+
     def test_c6_defaults_to_replace_and_can_explicitly_preserve_atmosphere(self):
         self.assertEqual(self.load()['atmosphere_policy'], 'replace')
         self.value['atmosphere_policy'] = 'preserve'
@@ -94,6 +132,27 @@ if __name__ == '__main__':
 
 
 class RunIdentityTests(unittest.TestCase):
+    def test_run_uses_its_preset_snapshot_and_rejects_identity_drift(self):
+        from l4d2_bsp.presets import load_preset
+        from l4d2_bsp.workflow import load_run, run_preset
+        preset = load_preset()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            snapshot = root / 'preset.json'
+            snapshot.write_bytes(preset.source_path.read_bytes())
+            report = {'schema_version': 1, 'input_inventory': [], 'tracked_outputs': [],
+                      'config': {'preset': preset.id},
+                      'preset': preset.metadata() | {'snapshot_path': str(snapshot)}}
+            (root / 'run.json').write_text(json.dumps(report))
+            self.assertEqual(run_preset(load_run(root)).capture_exposure_max, 5)
+            snapshot.write_bytes(snapshot.read_bytes() + b'\n')
+            with self.assertRaisesRegex(ValueError, 'snapshot changed'):
+                load_run(root)
+            report.pop('preset')
+            (root / 'run.json').write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, 'Missing run preset'):
+                load_run(root)
+
     def test_native_import_failure_records_error_and_allows_new_attempt(self):
         from l4d2_bsp.workflow import finish
         from unittest.mock import patch

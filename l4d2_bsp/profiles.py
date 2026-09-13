@@ -11,7 +11,7 @@ import struct
 from .entities import parse_entities
 from .inspect import io_signature, sha256
 from .lighting import ENVIRONMENT_FIELDS
-from .style import FOG_FIELDS, SUN_FIELDS, TONEMAPS, _read, _unique, _validate, transfer_c5_style
+from .style import FOG_FIELDS, SUN_FIELDS, TONEMAPS, _read, _reference, _unique, _validate, transfer_c5_style
 
 
 def profile_spec(profile):
@@ -88,9 +88,10 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
             raise ValueError('atmosphere_policy=replace currently supports c6-c5 only')
         return transfer_c5_style(data, reference, kind=kind, reference_kind=reference_kind)
     parsed, text, entities = _read(data, kind)
-    _, _, donor = _read(reference, reference_kind)
+    donor, reference_hash, preset_metadata = _reference(reference, reference_kind)
     _identity(entities)
-    _identity(donor, reference=True)
+    if preset_metadata is None:
+        _identity(donor, reference=True)
 
     roles = [('fog_storm', '1', 'storm_default'), ('fog_master', '0', 'outdoor_nondefault'),
              ('foginteriorcontroller', '0', 'interior_volume')]
@@ -157,20 +158,21 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
         _named(donor, classname, target)
         original = _startup(entities, target, 'SetAutoExposureMax')
         reference_output = _startup(donor, target, 'SetAutoExposureMax')
-        if original[2][2] not in ('8', '5') or reference_output[2][2] != '5':
+        maximum = reference_output[2][2]
+        if original[2][2] not in ('8', maximum) or (preset_metadata is None and maximum != '5'):
             raise ValueError('Unapproved C6/C5 startup exposure maximum')
         i, j, parts = original
         source_exposures.append((i, j))
-        parts[2] = '5'
+        parts[2] = maximum
         replace(i, j, '\x1b'.join(parts), 'visual_io_parameter')
 
     bright = _startup(donor, 'tonemap_global', 'SetTonemapPercentBrightPixels')
-    if bright[2][2] != '5':
+    if preset_metadata is None and bright[2][2] != '5':
         raise ValueError('Unapproved C5 bright-pixel exposure value')
     existing = _startup(entities, 'tonemap_global', 'SetTonemapPercentBrightPixels', optional=True)
     owner = source_exposures[0][0]
     if existing:
-        if existing[0] != owner or existing[2][2] != '5':
+        if existing[0] != owner or existing[2][2] != bright[2][2]:
             raise ValueError('Unapproved existing bright-pixel output value or owner')
     else:
         value = '\x1b'.join(bright[2])
@@ -248,7 +250,7 @@ def transfer_style(data, reference, *, profile, kind='bsp', reference_kind='bsp'
                        if p.key.startswith('On') and e.one('targetname') in
                        ('relay_tonemap_flash', 'relay_storm_blendin', 'relay_storm_blendout')]
     report = dict(profile='c6-to-c5-globals-v1', atmosphere_policy=atmosphere_policy, source_sha256=sha256(data),
-        reference_sha256=sha256(reference), output_sha256=sha256(output), changes=changes,
+        reference_sha256=reference_hash, preset=preset_metadata, output_sha256=sha256(output), changes=changes,
         added_outputs=added_outputs, added_entity_classes=added_classes,
         entity_counts=[len(entities), len(after)], all_io_unchanged=io_signature(entities) == io_signature(after),
         gameplay_io_unchanged=True, protected_io_count=len(protected), protected_entity_bytes_unchanged=True,

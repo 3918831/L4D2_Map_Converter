@@ -1,6 +1,6 @@
 # 中文使用指南
 
-0.2.0 将 C2M1 或 C6M1 的视觉迁移到 C5 风格。C6 默认覆盖原有天气和局部氛围，生成晴天版本；可显式选择保留原天气。默认先生成离线包，再由用户选择是否进行游戏内 HDR 反射采样。新晴天版本的画面和完整玩法仍需独立实机验收。
+0.3.0 将 C2M1 或 C6M1 的视觉迁移到内置 `c5m1-daylight-v1` 预设，无需 C5 BSP/LMP 参考文件。C6 默认覆盖原有天气和局部氛围，生成晴天版本；可显式选择保留原天气。默认先生成离线包，再由用户选择是否进行游戏内 HDR 反射采样。已有 C6 晴天最终包获用户基本无问题的反馈；每次新构建仍需独立实机验收。
 
 ## 1. 准备依赖与配置
 
@@ -22,11 +22,10 @@ notepad config.local.json
 
 | 配置项 | 用途及常见位置 |
 |---|---|
-| `profile` | C6 用 `c6-c5`，C2 用 `c2-c5` |
+| `source_profile` | C6 用 `c6m1_riverbank`，C2 用 `c2m1_highway`；只支持这两张来源地图 |
+| `preset` | `c5m1-daylight-v1`，随源码/Python 包提供的固定版本 C5 日光预设 |
 | `atmosphere_policy` | C6 默认 `replace`：替换雨、风暴、雷声、闪电曝光、局部雾/后处理/检查点调色及雨声环境音；`preserve` 保留旧版天气和局部分区效果。C2 仍使用已接受配置，只支持 `preserve`，可省略 |
 | `source_bsp` | C6：`<gameRoot>/left4dead2_dlc1/maps/c6m1_riverbank.bsp`；C2：`<gameRoot>/left4dead2/maps/c2m1_highway.bsp` |
-| `reference_bsp` | `<gameRoot>/left4dead2/maps/c5m1_waterfront.bsp` |
-| `reference_lmp` | `<gameRoot>/update/maps/c5m1_waterfront_l_0.lmp` |
 | `mode_lmps` | 必须提供 `h`、`l`、`s` 三项，对应 `<gameRoot>/update/maps/<原地图名>_h_0.lmp` 等三文件 |
 | `nav` | `<gameRoot>/update/maps/<原地图名>.nav` |
 | `exclude` | 可选的原图 `<原地图名>_exclude.lst`；没有则用 `null` |
@@ -39,6 +38,8 @@ notepad config.local.json
 
 `resource_roots` 查询只说明资源可找到，不能证明游戏最终挂载优先级，也不是全部材质递归依赖检查。工具和运行游戏应指向准备实际测试的兼容完整资源环境。
 
+推荐配置同时指定 `source_profile` 和 `preset`，不填写 `profile`、`reference_bsp` 或 `reference_lmp`。旧格式仍支持 `profile: c6-c5` 或 `c2-c5`，但须继续明确提供原 C5 `reference_bsp` 和 `reference_lmp` 路径。两套选择方式混用会拒绝；预设也不支持任意外部 JSON 路径。详见 [预设说明](presets.md)。
+
 `replace` 保留建筑、物件、局部灯光/材质、碰撞、NAV、机关和推进条件。已核实的 C6 天气链会被移除；惊动新娘 Witch 的尸潮仍保留，只取消它的风暴分支。各雾区及后处理的效果统一为目标设置，原区域体积可作为技术载体保留。室外环境音改为 C5 水岸，室内改为 C5 商店室内底噪；不再沿用原雨声。不会增加新的降雨体积，也不宣称支持任意地图或解释任意脚本。
 
 ## 2. 检查并生成离线包
@@ -47,7 +48,7 @@ notepad config.local.json
 python -m l4d2_bsp.workflow check --config config.local.json
 ```
 
-这一步在内存中检查基础 BSP、三模式 LMP、参考图和所需风格资源，不写游戏目录。通过后执行：
+这一步在内存中检查基础 BSP、三模式 LMP、预设（旧配置检查参考图）和所需风格资源，不写游戏目录。通过后执行：
 
 ```powershell
 python -m l4d2_bsp.workflow build --config config.local.json
@@ -123,6 +124,12 @@ python -m l4d2_bsp.workflow build --config "$newConfig"
 构建后，按第 2 节解析 `$runDir`，但将 `config.local.json` 换为此次新配置文件名。已经准备好新配置时，直接从 `check`/`build` 开始。`run.json` 顶层的 `atmosphere_policy` 应为 `replace`；`preflight.base_style.weather` 及各 `mode_styles` 记录天气移除明细。受支持原始 C6 每份实体数据移除 34 个天气实体、145 条天气相关输出，并添加一颗视觉太阳。
 
 离线包已经重算光照，但反射仍来自原图。可先按第 5 节部署和观察它；如果只需要离线输出，到这里即可。记录的画面标注“旧反射”。
+
+### 2.3 从参考文件配置迁移到内置预设
+
+已开始的旧运行继续使用原配置与原参考文件，不修改其 `run.json` 或配置哈希。升级源码不会把旧运行改写为预设运行；仅归档已接受结果也不需要重新烘焙。
+
+需要新构建时，把当前示例复制为同目录下一个全新配置文件，填写原来源地图、模式、NAV、游戏和工具路径，选择全新的 `output_dir`。使用 `source_profile` 与 `preset`，去掉旧 `profile`、`reference_bsp`、`reference_lmp` 三项，再执行 `check` 和 `build`。C6 如要保持旧天气必须明确设为 `preserve`；省略时为 `replace`。C2 仅支持 `preserve`。不要覆盖已经被旧运行追踪的配置。
 
 ## 3. 准备游戏内反射采样
 

@@ -17,10 +17,23 @@ def load_config(path):
     value = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(value, dict):
         raise ValueError('Configuration must be a JSON object')
-    unknown = set(value) - set(PATH_KEYS) - {'profile', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy'}
+    unknown = set(value) - set(PATH_KEYS) - {'profile', 'source_profile', 'preset', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy'}
     if unknown:
         raise ValueError(f'Unknown configuration keys: {sorted(unknown)}')
-    if value.get('profile') not in MAPS:
+    preset = None
+    if 'source_profile' in value or 'preset' in value:
+        if any(key in value for key in ('profile', 'reference_bsp', 'reference_lmp')):
+            raise ValueError('Do not mix source_profile/preset with legacy profile/reference paths')
+        if not all(key in value for key in ('source_profile', 'preset')):
+            raise ValueError('source_profile and preset must be provided together')
+        if value['source_profile'] not in MAPS.values():
+            raise ValueError('source_profile must be c2m1_highway or c6m1_riverbank')
+        from .presets import load_preset
+        preset = load_preset(value['preset'])
+        profile = next(key for key, name in MAPS.items() if name == value['source_profile'])
+    else:
+        profile = value.get('profile')
+    if not isinstance(profile, str) or profile not in MAPS:
         raise ValueError('profile must be c2-c5 or c6-c5; other maps are not supported yet')
 
     def resolve(raw):
@@ -28,7 +41,9 @@ def load_config(path):
             raise ValueError('Paths must be nonempty strings without control characters')
         return (path.parent / raw).resolve()
 
-    cfg = {'profile': value['profile'], 'config_file': path}
+    cfg = {'profile': profile, 'config_file': path}
+    if preset:
+        cfg.update(source_profile=value['source_profile'], preset=preset.id, preset_file=preset.source_path)
     policy = value.get('atmosphere_policy', 'replace' if cfg['profile'] == 'c6-c5' else 'preserve')
     if not isinstance(policy, str) or policy not in ('replace', 'preserve'):
         raise ValueError('atmosphere_policy must be replace or preserve')
@@ -36,6 +51,9 @@ def load_config(path):
         raise ValueError('atmosphere_policy=replace currently supports c6-c5 only; C2 retains its accepted profile')
     cfg['atmosphere_policy'] = policy
     for key in PATH_KEYS:
+        if preset and key in ('reference_bsp', 'reference_lmp'):
+            cfg[key] = None
+            continue
         if key == 'exclude' and not value.get(key):
             cfg[key] = None
             continue
@@ -52,9 +70,9 @@ def load_config(path):
         raise ValueError('mode_lmps must explicitly provide h, l and s mode files')
     cfg['mode_lmps'] = {key: resolve(raw) for key, raw in modes.items()}
     name = MAPS[cfg['profile']]
-    if cfg['source_bsp'].name.lower() != name + '.bsp' or cfg['reference_bsp'].name.lower() != 'c5m1_waterfront.bsp':
+    if cfg['source_bsp'].name.lower() != name + '.bsp' or (not preset and cfg['reference_bsp'].name.lower() != 'c5m1_waterfront.bsp'):
         raise ValueError('BSP filenames do not match the selected supported source/reference profile')
-    if cfg['reference_lmp'].name.lower() not in {f'c5m1_waterfront_{mode}_0.lmp' for mode in 'hl'}:
+    if not preset and cfg['reference_lmp'].name.lower() not in {f'c5m1_waterfront_{mode}_0.lmp' for mode in 'hl'}:
         raise ValueError('reference_lmp must be an explicit C5 campaign mode entity patch')
     for mode, source in cfg['mode_lmps'].items():
         if source.name.lower() != f'{name}_{mode}_0.lmp':
@@ -95,6 +113,8 @@ def load_config(path):
 def input_inventory(cfg):
     paths = [cfg['config_file'], *[cfg[k] for k in ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude') if cfg[k]],
              *cfg['mode_lmps'].values(), cfg['game_dir'] / 'gameinfo.txt']
+    if cfg.get('preset_file'):
+        paths.append(cfg['preset_file'])
     paths.extend(cfg['tools_dir'] / name for name in ('vrad.exe', 'bspzip.exe', 'vpk.exe'))
     paths.extend(p for p in cfg['tools_dir'].glob('*.dll'))
     paths.extend(p for base in (cfg['tools_dir'], cfg['game_dir']) for p in base.glob('*.rad'))

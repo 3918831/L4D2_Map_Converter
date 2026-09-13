@@ -73,6 +73,15 @@ def _visual_output(entity, pair):
             and parts[1] in EXPOSURE_INPUTS and parts[3:] == ['0', '-1'])
 
 
+def _reference(reference, kind):
+    """Resolve validated visual data or the backwards-compatible donor bytes."""
+    from .presets import StylePreset
+    if isinstance(reference, StylePreset):
+        return reference.entities(kind), reference.sha256, reference.metadata()
+    _, _, entities = _read(reference, kind)
+    return entities, sha256(reference), None
+
+
 def transfer_c5_style(data, reference, *, kind='bsp', reference_kind='bsp'):
     """Transfer global appearance; retain source routing and skybox geometry.
 
@@ -81,7 +90,7 @@ def transfer_c5_style(data, reference, *, kind='bsp', reference_kind='bsp'):
     one reference exposure input and one non-solid sun entity may be added.
     """
     parsed, text, entities = _read(data, kind)
-    _, _, donor = _read(reference, reference_kind)
+    donor, reference_hash, preset_metadata = _reference(reference, reference_kind)
     edits, changes, added_outputs, added_classes = [], [], [], []
     expected = [[(p.key,p.value) for p in e.pairs] for e in entities]
     touched = set()
@@ -230,7 +239,7 @@ def transfer_c5_style(data, reference, *, kind='bsp', reference_kind='bsp'):
     checked, _, _ = _read(output, kind)
     if kind == 'bsp' and any(parsed.lump_bytes(i) != checked.lump_bytes(i) for i in range(1,64)):
         raise ValueError('Non-entity lump changed')
-    return output, dict(source_sha256=sha256(data),reference_sha256=sha256(reference),
+    return output, dict(source_sha256=sha256(data),reference_sha256=reference_hash, preset=preset_metadata,
         output_sha256=sha256(output), changes=changes, added_outputs=added_outputs,
         added_entity_classes=added_classes, entity_counts=[len(entities),len(after)],
         all_io_unchanged=io_signature(entities)==io_signature(after),gameplay_io_unchanged=True,

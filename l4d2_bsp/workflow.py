@@ -30,8 +30,24 @@ def addon_info(map_name, phase):
     if map_name not in MAPS.values() or phase not in ('offline', 'final'):
         raise ValueError('Unsupported addon metadata identity')
     return (f'"AddonInfo"\n{{\n "addonSteamAppID" "550"\n "addontitle" "Map Converter {map_name} {phase}"\n'
-            f' "addonversion" "0.2.0"\n "addonauthor" "L4D2 Map Converter"\n'
+            f' "addonversion" "0.3.0"\n "addonauthor" "L4D2 Map Converter"\n'
             f' "addonDescription" "C5 global style; {phase} HDR conversion. User runtime validation required."\n}}\n').encode('ascii')
+
+
+def run_preset(report):
+    """Read the exact preset used for this run, including capture controls."""
+    metadata = report.get('preset')
+    if not metadata:
+        if report.get('config', {}).get('preset'):
+            raise ValueError('Missing run preset snapshot metadata; use a new run')
+        return None
+    from .presets import parse_preset
+    path = Path(metadata['snapshot_path'])
+    preset = parse_preset(path.read_bytes(), source_path=path)
+    if (preset.id != metadata['id'] or preset.sha256 != metadata['sha256']
+            or preset.id != report['config'].get('preset')):
+        raise ValueError('Run preset snapshot changed; use a new run')
+    return preset
 
 
 def load_run(root):
@@ -41,6 +57,7 @@ def load_run(root):
         raise ValueError('Unsupported run manifest version')
     verify_inventory(result['input_inventory'])
     verify_inventory(result.get('tracked_outputs', []))
+    run_preset(result)
     if result.get('model_resource_inventory'):
         from .model_lighting import verify_resource_inventory
         from .native import _pak_entries
@@ -64,14 +81,19 @@ def check(config_path):
     from .profiles import transfer_style
     from .resources import lookup_resources
     cfg = load_config(config_path)
-    source, donor = cfg['source_bsp'].read_bytes(), cfg['reference_bsp'].read_bytes()
+    preset = None
+    if cfg.get('preset'):
+        from .presets import load_preset
+        preset = load_preset(cfg['preset'])
+    source = cfg['source_bsp'].read_bytes()
+    donor = preset if preset else cfg['reference_bsp'].read_bytes()
     inspection = inspect_bytes(source)
     if any(key.endswith('_error') for key in inspection):
         raise ValueError(f'Input BSP failed structural inspection: {inspection}')
     output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
     modes, mode_audits = {}, {}
     for key, path in cfg['mode_lmps'].items():
-        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
+        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), preset if preset else cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
     # Check concrete new style assets. Complete material dependency closure is
     # not claimed; compiler diagnostics and user loading remain further gates.
     names = ['materials/correction/cc_c5_main.raw', 'materials/sprites/light_glow02_add_noz.vmt']
@@ -79,11 +101,15 @@ def check(config_path):
     if cfg['profile'] == 'c6-c5' and cfg['atmosphere_policy'] == 'replace':
         from .weather import SOUNDSCAPE_RESOURCES
         names.extend(SOUNDSCAPE_RESOURCES)
+    if preset:
+        names = preset.required_resources(cfg['atmosphere_policy'])
     assets = lookup_resources(cfg['resource_roots'], names)
     missing = [name for name, item in assets['resources'].items() if not item['found']]
     if missing:
         raise ValueError(f'Missing C5 style resources; check resource_roots/full installation: {missing}')
-    report = {'profile': cfg['profile'], 'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
+    report = {'profile': cfg['profile'], 'source_profile': MAPS[cfg['profile']],
+              'preset': preset.metadata() if preset else None,
+              'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
               'mode_styles': mode_audits, 'style_resources': assets,
               'limitations': ['Resource roots are lookup candidates; game mount order must be checked in game.',
                               'C6 atmosphere follows atmosphere_policy; every new output requires independent runtime testing.',
@@ -99,11 +125,22 @@ def build(config_path):
     if root.exists():
         raise ValueError('output_dir already exists. Keep its evidence; choose a fresh output_dir for a new build.')
     inventory = input_inventory(cfg)
+    preset_data = None
+    if cfg.get('preset'):
+        from .presets import parse_preset
+        preset_data = cfg['preset_file'].read_bytes()
+        if parse_preset(preset_data).sha256 != preflight['preset']['sha256']:
+            raise ValueError('Preset changed during preflight; use a new run')
     root.mkdir(parents=True, exist_ok=False)
     run_id = uuid.uuid4().hex[:16]
     report = {'schema_version': 1, 'run_id': run_id, 'created_at': datetime.now().astimezone().isoformat(),
               'status': 'preparing', 'profile': cfg['profile'], 'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': preflight['map_name'],
               'config': cfg, 'input_inventory': inventory, 'tracked_outputs': [], 'preflight': preflight}
+    if preset_data is not None:
+        preset_snapshot = root / 'preset.json'
+        preset_snapshot.write_bytes(preset_data)
+        report['preset'] = preflight['preset'] | {'snapshot_path': str(preset_snapshot)}
+        report['tracked_outputs'].append(tracked(preset_snapshot))
     manifest = root / 'run.json'
     write_json(manifest, report)
     try:
@@ -141,7 +178,7 @@ def build(config_path):
                                 tools_dir=cfg['tools_dir'], game_dir=cfg['game_dir'])
         report['offline_package'] = package
         report['offline_map'] = str(Path(package['vpk']).with_suffix('') / f'maps/{name}.bsp')
-        report['tracked_outputs'] = [tracked(snapshot), tracked(bsp), tracked(package['vpk'])]
+        report['tracked_outputs'].extend([tracked(snapshot), tracked(bsp), tracked(package['vpk'])])
         report['tracked_outputs'].extend(tracked(Path(package['vpk']).with_suffix('') / item['name']) for item in package['files'])
         verify_inventory(inventory)
         model_evidence.verify_current()
@@ -171,7 +208,9 @@ def prepare(root):
         if item['name'].startswith('maps/'):
             relative = 'maps/' + Path(item['name']).name.replace(name, alias, 1)
             assets[relative] = (original / item['name']).read_bytes()
-    assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'], exposure_max=5))
+    preset = run_preset(report)
+    assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'],
+                                  exposure_max=preset.capture_exposure_max if preset else 5))
     capture_dir = root / 'capture'
     if capture_dir.exists():
         raise ValueError('Capture preparation directory already exists; inspect it before retrying')
