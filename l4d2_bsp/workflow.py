@@ -151,6 +151,12 @@ def build(config_path):
         name = report['map_name']
         compile_dir = root / 'bake'
         compile_dir.mkdir()
+        vrad_game_dir = cfg['game_dir']
+        if cfg.get('native_mounts', 'gameinfo') == 'resource_roots':
+            from .native_mounts import write_resource_root_gameinfo
+            generated_gameinfo = write_resource_root_gameinfo(compile_dir, cfg['resource_roots'])
+            report['tracked_outputs'].append(tracked(generated_gameinfo))
+            vrad_game_dir = compile_dir
         snapshot = compile_dir / 'input.bsp.snapshot'
         snapshot.write_bytes(prepared)
         bsp = compile_dir / (name + '.bsp')
@@ -159,15 +165,18 @@ def build(config_path):
         model_evidence = ModelLightingEvidence(prepared, cfg['resource_roots'])
         report['model_resource_inventory'] = model_evidence.inventory()
         report['status'] = 'baking'
-        report['vrad_command'] = ['-game', str(cfg['game_dir']), '-novconfig', '-hdr', '-bounce', '4',
+        report['vrad_command'] = ['-game', str(vrad_game_dir), '-novconfig', '-hdr', '-bounce', '4',
             '-StaticPropLighting', '-StaticPropPolys', '-TextureShadows', '-threads', str(cfg['threads']), '-low', str(bsp)]
         write_json(manifest, report)
         print(f'Baking HDR world/static-prop lighting. Log: {compile_dir / "vrad.log"}', flush=True)
         native(cfg['tools_dir'] / 'vrad.exe', report['vrad_command'], cwd=compile_dir,
                log=compile_dir / 'vrad.log', timeout=cfg['timeout_seconds'])
+        verify_inventory(report['tracked_outputs'])
         compiled = bsp.read_bytes()
         model_evidence.verify_current()
-        report['bake_audit'] = audit_bake(prepared, compiled, model_evidence=model_evidence)
+        report['bake_audit'] = audit_bake(
+            prepared, compiled, model_evidence=model_evidence,
+            allow_leaf_sky_flags=cfg.get('native_mounts') == 'resource_roots')
         log = (compile_dir / 'vrad.log').read_text(encoding='utf-8', errors='replace')
         report['compiler_diagnostics'] = [line for line in log.splitlines() if re.search(r'error|warning|not found|could not|couldn.t', line, re.I)]
         if any(re.search(r'Error loading studio model|Error!.*(?:material|model)|could not open.*(?:mdl|vmt)', line, re.I) for line in report['compiler_diagnostics']):

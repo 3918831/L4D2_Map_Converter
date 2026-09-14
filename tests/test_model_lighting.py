@@ -1,4 +1,5 @@
 """Model-version migrations require real resource and vertex-layout evidence."""
+import json
 import struct
 import tempfile
 import unittest
@@ -56,11 +57,14 @@ def lighting(checksum, groups):
     return bytes(data)
 
 
-def scene(checksum=123, groups=(3,), index=0):
+def scene(checksum=123, groups=(3,), index=0, leaf_flags=0):
     prop = bytearray(72)
     struct.pack_into('<H', prop, 24, index)
     sprp = struct.pack('<i', 1)+MODEL.encode().ljust(128, b'\0')+struct.pack('<2i', 0, 1)+prop
-    return bsp({40: pak([(zipfile.ZipInfo('sp_hdr_0.vhv'), lighting(checksum, groups))])}, [('sprp', 0, 9, sprp)])
+    leaf = bytearray(32)
+    struct.pack_into('<H', leaf, 6, leaf_flags)
+    return bsp({10: bytes(leaf), 40: pak([(zipfile.ZipInfo('sp_hdr_0.vhv'), lighting(checksum, groups))])},
+               [('sprp', 0, 9, sprp)], versions={10: 1})
 
 
 class ModelLightingTests(unittest.TestCase):
@@ -219,10 +223,17 @@ class ModelLightingTests(unittest.TestCase):
         nav = self.root/'test.nav'
         nav.write_bytes(b'nav')
         cfg = {'output_dir': output, 'profile': 'c6-c5', 'atmosphere_policy': 'replace', 'resource_roots': [self.root],
+               'native_mounts': 'resource_roots',
                'game_dir': self.root, 'tools_dir': self.root, 'nav': nav, 'exclude': None,
                'threads': 1, 'timeout_seconds': 10, 'preset': preset.id, 'preset_file': preset.source_path}
         def bake(tool, args, **kwargs):
-            Path(args[-1]).write_bytes(scene(456, (2, 1)))
+            game_dir = Path(args[args.index('-game') + 1])
+            self.assertEqual(game_dir, output / 'bake')
+            generated = game_dir / 'gameinfo.txt'
+            self.assertTrue(generated.is_file())
+            during = json.loads((output / 'run.json').read_text())
+            self.assertTrue(any(Path(item['path']).samefile(generated) for item in during['tracked_outputs']))
+            Path(args[-1]).write_bytes(scene(456, (2, 1), leaf_flags=0x0200))
             kwargs['log'].write_text('Finished fixture bake\n')
         def package(payloads, *, stage, stem, **kwargs):
             from l4d2_bsp.configuration import file_hash
@@ -243,6 +254,8 @@ class ModelLightingTests(unittest.TestCase):
             except ValueError as exc:
                 self.fail(f'Workflow did not supply model evidence: {exc}')
         self.assertEqual(result['status'], 'offline_ready')
+        self.assertTrue(result['bake_audit']['leaf_sky_flags_changed'])
+        self.assertFalse(result['bake_audit']['protected_lumps_unchanged'])
         self.assertEqual(len(result['model_resource_inventory']), 3)
         self.assertEqual((output/'preset.json').read_bytes(), preset.source_path.read_bytes())
         self.assertEqual(result['preset']['sha256'], preset.sha256)

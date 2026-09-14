@@ -59,6 +59,59 @@ def detail(record=bytes(52)):
 
 
 class BakeAuditTests(unittest.TestCase):
+    def test_leaf_sky_flags_are_opt_in_and_reported_without_weakening_geometry(self):
+        leaves = bytes(64)
+        changed = bytearray(leaves)
+        struct.pack_into('<H', changed, 6, 0x0200)
+        struct.pack_into('<H', changed, 38, 0x0800)
+        old = bsp({10: leaves}, versions={10: 1})
+        new = bsp({10: bytes(changed)}, versions={10: 1})
+        with self.assertRaisesRegex(ValueError, 'Protected lump'):
+            module.audit_bake(old, new)
+        report = module.audit_bake(old, new, allow_leaf_sky_flags=True)
+        self.assertEqual(report['changed_lumps'], [10])
+        self.assertTrue(report['leaf_sky_flags_changed'])
+        self.assertEqual(report['leaf_sky_flags_changed_count'], 2)
+        self.assertTrue(report['leaf_geometry_unchanged'])
+        self.assertFalse(report['protected_lumps_unchanged'])
+        self.assertEqual(report['leaf_allowed_fields'], ['flags.SKY', 'flags.SKY2D'])
+
+    def test_leaf_exception_rejects_area_radial_unknown_flags_and_geometry(self):
+        old_leaf = bytes(32)
+        cases = {
+            'area': (6, 0x01),
+            'radial': (7, 0x04),
+            'unknown flags': (7, 0x10),
+            'geometry': (0, 0x01),
+            'bounds': (20, 0x01),
+            'cluster': (4, 0x01),
+            'water': (28, 0x01),
+            'padding': (31, 0x01),
+        }
+        old = bsp({10: old_leaf}, versions={10: 1})
+        for name, (offset, value) in cases.items():
+            changed = bytearray(old_leaf)
+            changed[offset] ^= value
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'leaf|Leaf'):
+                module.audit_bake(old, bsp({10: bytes(changed)}, versions={10: 1}),
+                                  allow_leaf_sky_flags=True)
+
+    def test_leaf_exception_rejects_invalid_layout_version_and_compression(self):
+        cases = [
+            (bytes(31), bytearray(bytes(31)), {10: 1}, None),
+            (bytes(32), bytearray(bytes(32)), {10: 0}, None),
+            (bytes(32), bytearray(bytes(32)), {10: 1}, {10: b'LZMA'}),
+        ]
+        for old_leaf, changed, versions, compressed in cases:
+            changed[6] ^= 2
+            with self.subTest(size=len(old_leaf), version=versions[10], compressed=bool(compressed)), \
+                 self.assertRaisesRegex(ValueError, 'leaf|Leaf'):
+                module.audit_bake(
+                    bsp({10: old_leaf}, versions=versions, compressed=compressed),
+                    bsp({10: bytes(changed)}, versions=versions, compressed=compressed),
+                    allow_leaf_sky_flags=True,
+                )
+
     def test_accepts_lighting_but_retains_entities_geometry_and_pak_resources(self):
         game = [('sprp', 0, 9, b'props'), ('dprp', 0, 4, detail()),
                 ('dplh', 0, 0, struct.pack('<i', 1) + b'dark\0')]

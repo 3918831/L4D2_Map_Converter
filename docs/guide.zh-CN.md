@@ -8,6 +8,8 @@
 
 需要 Windows、可从 PowerShell 调用的 Python 3.11+、完整且可正常启动的 L4D2 安装，以及与 L4D2 匹配的官方工具。Python 代码只依赖标准库，无需第三方 Python 包。源码 ZIP 不包含 Python、游戏资源、编译器或启动器。
 
+原生工具可以使用单独解压的 [Windows 工具包](native-tools.zh-CN.md)，无需另外安装 Authoring Tools。把新配置的 `tools_dir` 指向该包的 `bin`，并设置 `native_mounts: resource_roots`；完整游戏、资源和启动器仍由本机提供。
+
 在解压后的项目根目录运行命令。路径含空格可用引号；为了 BSPZIP 资源清单兼容，请给工具包和运行输出使用 ASCII 路径，例如 `E:/L4D2MapConverter`、`E:/L4D2Runs/c6-c5-001`。输出必须位于游戏和工具安装目录之外。
 
 ```powershell
@@ -32,7 +34,8 @@ notepad config.local.json
 | `nav` | `<gameRoot>/update/maps/<原地图名>.nav` |
 | `exclude` | 可选的原图 `<原地图名>_exclude.lst`；没有则用 `null` |
 | `game_dir` | `<gameRoot>/left4dead2`，须含 `gameinfo.txt`，不是安装根目录 |
-| `tools_dir` | 官方工具安装的 `bin`，须含 `vrad.exe`、`bspzip.exe`、`vpk.exe` 及运行依赖 |
+| `tools_dir` | 官方工具安装或独立工具包的 `bin`，须含 `vrad.exe`、`bspzip.exe`、`vpk.exe` 及运行依赖 |
+| `native_mounts` | 独立工具包设为 `resource_roots`，用绝对路径明确挂载烘焙资源；省略时为 `gameinfo`，保持旧工具安装的行为 |
 | `output_dir` | 本次全新运行目录；工具拒绝复用已存在目录 |
 | `threads` | VRAD 线程数，1—64，默认 4 |
 | `timeout_seconds` | VRAD 最长秒数，1—86400，默认 3600；按机器性能设置 |

@@ -1,10 +1,15 @@
 # Source and third-party dependencies
 
-This distribution contains project source, synthetic tests, configuration examples
+The source distribution contains project source, synthetic tests, configuration examples
 and documentation. No Valve game files, maps, tools, launchers or game binaries
 are included. A complete local Left 4 Dead 2 installation and compatible native
 VRAD/BSPZIP/VPK tools are external prerequisites. Python 3.11 or later is required
 for this source toolkit.
+
+Native tools may instead be supplied as a separate eight-file Windows tool ZIP,
+documented in docs/native-tools.zh-CN.md. That ZIP preserves the original bytes
+and ownership; applicable third-party licenses still govern those files. The
+source packager does not include the native binaries in the source archive.
 
 Valve Source SDK is referenced to understand formats and tool behavior; it does
 not establish that every closed-source L4D2 version behaves identically. Consult

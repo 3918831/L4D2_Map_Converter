@@ -2,7 +2,7 @@
 
 在原 BSP 的副本上应用版本化视觉预设，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。0.5.0 内置 `c5m1-daylight-v1` 与 `c4m3-overcast-static-v1`，新增可选无注入自动 HDR 反射采样；此前 C2→C4 固定阴天已完成用户实机验收。内置预设无需目标地图 BSP/LMP；无需 VMF、反编译、VBSP 或 VVIS。
 
-这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。游戏、地图资源和官方 `vrad.exe`、`bspzip.exe`、`vpk.exe` 由使用者的本机安装提供；发行包不包含 Python 运行环境、Valve 工具或游戏素材。
+这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。完整游戏和地图资源由使用者的本机安装提供；原生工具可使用本机 Authoring Tools，或单独解压的 [Windows 原生工具包](docs/native-tools.zh-CN.md)。源码 ZIP 不包含 Python 运行环境、Valve 工具或游戏素材。
 
 ## 当前范围
 
@@ -62,6 +62,7 @@ python -m l4d2_bsp.workflow auto-capture --run ./runs/c6-c5-001 --launcher launc
 | [使用指南](docs/guide.zh-CN.md) | 可复制命令、配置、人工步骤、回退、固定机位 |
 | [C4 固定阴天指南](docs/c4m3-guide.zh-CN.md) | C2→C4 配置、固定参数、干燥环境音与验收范围 |
 | [自动采样指南](docs/auto-capture.zh-CN.md) | 启动器配置、一条命令采样、失败恢复及人工验收边界 |
+| [独立原生工具包](docs/native-tools.zh-CN.md) | 八文件 Windows 工具包、`tools_dir` 配置、重新打包与验证范围 |
 | [架构与保护合同](docs/architecture.md) | 原理、模块分工、审计边界 |
 | [预设与扩展边界](docs/presets.md) | C5/C4 预设、schema 兼容、版本身份和来源适配边界 |
 | [验证与证据](docs/validation.md) | 已确认范围、历史基线、用户验收记录 |

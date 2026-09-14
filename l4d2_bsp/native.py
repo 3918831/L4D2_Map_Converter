@@ -201,7 +201,35 @@ def _audit_pak(before: bytes, after: bytes, model_evidence=None) -> dict:
                 model_lighting_migrations=migrations)
 
 
-def audit_bake(before: bytes, after: bytes, *, model_evidence=None) -> dict:
+def _audit_leaf_sky_flags(old: BspFile, new: BspFile) -> int:
+    """Allow only VRAD's measured v1 leaf SKY/SKY2D flag recomputation.
+
+    Layout/flags: https://raw.githubusercontent.com/ValveSoftware/source-sdk-2013/master/src/public/bspfile.h
+    Recompute: https://raw.githubusercontent.com/ValveSoftware/source-sdk-2013/master/src/utils/vrad/lightmap.cpp
+    """
+    left, right = old.lump_bytes(10), new.lump_bytes(10)
+    metadata = (old.lumps[10], new.lumps[10])
+    if any(lump.version != 1 or lump.fourcc != b'\0' * 4 for lump in metadata):
+        raise ValueError('Leaf sky-flag exception requires uncompressed version-1 leaves')
+    if len(left) != len(right) or len(left) % 32:
+        raise ValueError('Leaf count/layout changed; expected 32-byte version-1 records')
+    changed = 0
+    # LEAF_FLAGS_SKY (measured here) and LEAF_FLAGS_SKY2D (same source-defined field).
+    allowed = 0x0A00  # (1 << 9) | (4 << 9) in the packed area:9/flags:7 word.
+    for offset in range(0, len(left), 32):
+        old_record, new_record = left[offset:offset + 32], right[offset:offset + 32]
+        if old_record[:6] != new_record[:6] or old_record[8:] != new_record[8:]:
+            raise ValueError(f'Leaf geometry or protected fields changed at leaf {offset // 32}')
+        old_area_flags, new_area_flags = struct.unpack_from('<H', old_record, 6)[0], struct.unpack_from('<H', new_record, 6)[0]
+        delta = old_area_flags ^ new_area_flags
+        if delta & ~allowed:
+            raise ValueError(f'Leaf area, radial, or unknown flags changed at leaf {offset // 32}')
+        changed += bool(delta)
+    return changed
+
+
+def audit_bake(before: bytes, after: bytes, *, model_evidence=None,
+               allow_leaf_sky_flags=False) -> dict:
     """Reject any change outside understood lighting fields; never rewrite bytes."""
     old, new = BspFile.parse(before), BspFile.parse(after)
     if model_evidence is not None and model_evidence.input_sha256 != hashlib.sha256(before).hexdigest():
@@ -209,15 +237,18 @@ def audit_bake(before: bytes, after: bytes, *, model_evidence=None) -> dict:
     if (old.version, old.revision) != (new.version, new.revision):
         raise ValueError('BSP version or revision changed')
     changed = []
+    leaf_sky_flags_changed_count = 0
     for index, (a, b) in enumerate(zip(old.lumps, new.lumps)):
         if (a.version, a.fourcc) != (b.version, b.fourcc):
             raise ValueError(f'Lump metadata changed: {index}')
         left, right = old.lump_bytes(index), new.lump_bytes(index)
         if left != right:
             changed.append(index)
-            if index not in LIGHTING_LUMPS:
+            if index == 10 and allow_leaf_sky_flags:
+                leaf_sky_flags_changed_count = _audit_leaf_sky_flags(old, new)
+            elif index not in LIGHTING_LUMPS:
                 raise ValueError(f'Protected lump changed: {index}')
-            if a.fourcc != b'\0'*4:
+            elif a.fourcc != b'\0'*4:
                 raise ValueError(f'Compressed changed lump is unsupported: {index}')
     left, right = old.lump_bytes(58), new.lump_bytes(58)
     if left or right:
@@ -233,8 +264,13 @@ def audit_bake(before: bytes, after: bytes, *, model_evidence=None) -> dict:
                 raise ValueError(f'HDR face geometry changed at face {offset // 56}')
     report = dict(input_sha256=hashlib.sha256(before).hexdigest(),
                   output_sha256=hashlib.sha256(after).hexdigest(), changed_lumps=changed,
-                  entities_byte_identical=True, protected_lumps_unchanged=True,
-                  face_topology_unchanged=True, hdr_face_count=len(left) // 56)
+                  entities_byte_identical=True, protected_lumps_unchanged=10 not in changed,
+                  face_topology_unchanged=True, hdr_face_count=len(left) // 56,
+                  leaf_sky_flags_changed=bool(leaf_sky_flags_changed_count),
+                  leaf_sky_flags_changed_count=leaf_sky_flags_changed_count,
+                  leaf_geometry_unchanged=True,
+                  leaf_allowed_fields=(['flags.SKY', 'flags.SKY2D']
+                                       if allow_leaf_sky_flags else []))
     report.update(_audit_game(old, new))
     report.update(_audit_pak(old.lump_bytes(40), new.lump_bytes(40), model_evidence))
     return report

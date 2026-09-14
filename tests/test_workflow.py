@@ -97,6 +97,25 @@ class ConfigurationTests(unittest.TestCase):
         self.value['atmosphere_policy'] = 'preserve'
         self.assertEqual(self.load()['atmosphere_policy'], 'preserve')
 
+    def test_native_mounts_defaults_to_gameinfo_and_accepts_resource_roots(self):
+        self.assertEqual(self.load()['native_mounts'], 'gameinfo')
+        self.value['native_mounts'] = 'resource_roots'
+        self.value['resource_roots'] = ['game/left4dead2']
+        cfg = self.load()
+        self.assertEqual(cfg['native_mounts'], 'resource_roots')
+        self.assertEqual(cfg['resource_roots'], [(self.root / 'game/left4dead2').resolve()])
+
+    def test_resource_root_native_mounts_reject_invalid_mode_and_unsafe_paths(self):
+        self.value['native_mounts'] = 'portable'
+        with self.assertRaisesRegex(ValueError, 'native_mounts'):
+            self.load()
+        self.value['native_mounts'] = 'resource_roots'
+        for raw, message in (([], 'nonempty'), (['game/missing'], 'directory'),
+                             (['game/left4dead2"bad'], 'quote'), (['game/地图'], 'ASCII')):
+            self.value['resource_roots'] = raw
+            with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, message):
+                self.load()
+
     def test_invalid_atmosphere_policy_is_rejected(self):
         for value in (None, True, 'rain', 'REPLACE', {}):
             self.value['atmosphere_policy'] = value
@@ -154,6 +173,37 @@ if __name__ == '__main__':
 
 
 class RunIdentityTests(unittest.TestCase):
+    def test_build_fails_if_native_tool_changes_generated_mount_file(self):
+        from l4d2_bsp.workflow import build
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / 'run'
+            cfg = {'output_dir': output, 'profile': 'c6-c5', 'atmosphere_policy': 'replace',
+                   'resource_roots': [root], 'native_mounts': 'resource_roots',
+                   'game_dir': root, 'tools_dir': root, 'nav': root / 'map.nav', 'exclude': None,
+                   'threads': 1, 'timeout_seconds': 10}
+
+            class Evidence:
+                def __init__(self, *args):
+                    pass
+
+                def inventory(self):
+                    return []
+
+            def mutate_mount(tool, args, **kwargs):
+                (Path(args[args.index('-game') + 1]) / 'gameinfo.txt').write_text('changed')
+
+            with patch('l4d2_bsp.workflow.check', return_value=(cfg, {'map_name': 'c6m1_riverbank'}, b'bsp', {})), \
+                 patch('l4d2_bsp.workflow.input_inventory', return_value=[]), \
+                 patch('l4d2_bsp.model_lighting.ModelLightingEvidence', Evidence), \
+                 patch('l4d2_bsp.native.native', mutate_mount):
+                with self.assertRaisesRegex(ValueError, 'changed'):
+                    build(root / 'config.json')
+            report = json.loads((output / 'run.json').read_text())
+            self.assertEqual(report['status'], 'failed')
+            self.assertNotEqual(report['status'], 'offline_ready')
+
     def test_run_uses_its_preset_snapshot_and_rejects_identity_drift(self):
         from l4d2_bsp.presets import load_preset
         from l4d2_bsp.workflow import load_run, run_preset

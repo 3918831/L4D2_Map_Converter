@@ -19,7 +19,7 @@ def load_config(path):
     value = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(value, dict):
         raise ValueError('Configuration must be a JSON object')
-    unknown = set(value) - set(PATH_KEYS) - {'profile', 'source_profile', 'preset', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy'}
+    unknown = set(value) - set(PATH_KEYS) - {'profile', 'source_profile', 'preset', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy', 'native_mounts'}
     if unknown:
         raise ValueError(f'Unknown configuration keys: {sorted(unknown)}')
     preset = None
@@ -63,6 +63,10 @@ def load_config(path):
     if not full_preset and cfg['profile'] != 'c6-c5' and policy != 'preserve':
         raise ValueError('atmosphere_policy=replace currently supports c6-c5 only; C2 retains its accepted profile')
     cfg['atmosphere_policy'] = policy
+    native_mounts = value.get('native_mounts', 'gameinfo')
+    if not isinstance(native_mounts, str) or native_mounts not in ('gameinfo', 'resource_roots'):
+        raise ValueError('native_mounts must be gameinfo or resource_roots')
+    cfg['native_mounts'] = native_mounts
     for key in PATH_KEYS:
         if preset and key in ('reference_bsp', 'reference_lmp'):
             cfg[key] = None
@@ -114,12 +118,29 @@ def load_config(path):
         roots = value['resource_roots']
         if not isinstance(roots, list) or not roots:
             raise ValueError('resource_roots must be a nonempty list of directories')
+        if cfg['native_mounts'] == 'resource_roots':
+            for raw in roots:
+                if isinstance(raw, str) and '"' in raw:
+                    raise ValueError('Resource root paths must not contain a quote')
+                if isinstance(raw, str) and not raw.isascii():
+                    raise ValueError('Resource root paths must use ASCII for native tools')
         cfg['resource_roots'] = [resolve(x) for x in roots]
         if any(not p.is_dir() for p in cfg['resource_roots']):
             raise ValueError('A configured resource root is not a directory')
     else:
         parent = cfg['game_dir'].parent
         cfg['resource_roots'] = [p for p in (parent / 'update', parent / 'left4dead2_dlc3', parent / 'left4dead2_dlc2', parent / 'left4dead2_dlc1', cfg['game_dir']) if p.is_dir()]
+    if cfg['native_mounts'] == 'resource_roots':
+        if not cfg['resource_roots']:
+            raise ValueError('resource_roots must be a nonempty list of directories')
+        for root in cfg['resource_roots']:
+            raw = str(root)
+            if '"' in raw:
+                raise ValueError('Resource root paths must not contain a quote')
+            if any(ord(character) < 32 for character in raw):
+                raise ValueError('Resource root paths must not contain control characters')
+            if not raw.isascii():
+                raise ValueError('Resource root paths must use ASCII for native tools')
     return cfg
 
 

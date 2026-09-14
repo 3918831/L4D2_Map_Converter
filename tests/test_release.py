@@ -17,6 +17,7 @@ class ReleaseTests(unittest.TestCase):
         for name in ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
                      'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md', 'docs/auto-capture.zh-CN.md',
+                     'docs/native-tools.zh-CN.md', 'scripts/make_tool_bundle.py',
                      'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                      'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
                      'l4d2_bsp/__init__.py', 'tests/test_example.py', 'examples/c6-c5.example.json'):
@@ -34,6 +35,8 @@ class ReleaseTests(unittest.TestCase):
             (root / 'config.local.json').write_text('PRIVATE')
             (root / 'l4d2_bsp/preset_data/personal.json').write_text('PRIVATE')
             (root / 'l4d2_bsp/private.json').write_text('PRIVATE')
+            (root / 'scripts/vrad.exe').write_bytes(b'PRIVATE-NATIVE')
+            (root / 'scripts/vrad_dll.dll').write_bytes(b'PRIVATE-NATIVE')
             output = Path(temp) / 'release.zip'
             build_release(root, output)
             with zipfile.ZipFile(output) as packed:
@@ -44,6 +47,9 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'), b'fixture')
                 self.assertIn('docs/c4m3-guide.zh-CN.md', packed.namelist())
                 self.assertIn('docs/auto-capture.zh-CN.md', packed.namelist())
+                self.assertIn('docs/native-tools.zh-CN.md', packed.namelist())
+                self.assertIn('scripts/make_tool_bundle.py', packed.namelist())
+                self.assertFalse(any(n.endswith(('.exe', '.dll')) for n in packed.namelist()))
                 self.assertNotIn('config.local.json', packed.namelist())
                 self.assertFalse(any(b'PRIVATE' in packed.read(n) for n in packed.namelist()))
             with self.assertRaises(FileExistsError):
