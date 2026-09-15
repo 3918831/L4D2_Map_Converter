@@ -65,7 +65,7 @@ def validate_soundscape_definitions(definitions, mapping):
 
 def preset_soundscape_assets(preset, map_name):
     """Return deterministic package paths/bytes for a map or its capture alias."""
-    if type(map_name) is not str or not re.fullmatch(r'[a-z0-9_]{1,64}', map_name):
+    if type(map_name) is not str or not re.fullmatch(r'[a-z0-9_-]{1,64}', map_name):
         raise ValueError('Invalid soundscape map name')
     definitions = getattr(preset, 'soundscape_definition', None)
     if definitions is None:

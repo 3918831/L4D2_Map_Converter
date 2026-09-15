@@ -19,6 +19,8 @@ def load_config(path):
     value = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(value, dict):
         raise ValueError('Configuration must be a JSON object')
+    if 'conversion' in value:
+        return _load_generic_config(path, value)
     unknown = set(value) - set(PATH_KEYS) - {'profile', 'source_profile', 'preset', 'mode_lmps', 'threads', 'timeout_seconds', 'resource_roots', 'atmosphere_policy', 'native_mounts'}
     if unknown:
         raise ValueError(f'Unknown configuration keys: {sorted(unknown)}')
@@ -147,6 +149,11 @@ def load_config(path):
 def input_inventory(cfg):
     paths = [cfg['config_file'], *[cfg[k] for k in ('source_bsp', 'reference_bsp', 'reference_lmp', 'nav', 'exclude') if cfg[k]],
              *cfg['mode_lmps'].values(), cfg['game_dir'] / 'gameinfo.txt']
+    if cfg.get('discovery'):
+        verify_discovery(cfg)
+        discovery = cfg['discovery']
+        choices = [discovery['nav'], discovery['exclude'], *discovery['mode_lmps'].values()]
+        paths.extend(Path(item['path']) for choice in choices for item in choice['candidates'])
     if cfg.get('preset_file'):
         paths.append(cfg['preset_file'])
     paths.extend(cfg['tools_dir'] / name for name in ('vrad.exe', 'bspzip.exe', 'vpk.exe'))
@@ -160,3 +167,119 @@ def verify_inventory(inventory):
         path = Path(entry['path'])
         if not path.is_file() or file_hash(path) != entry['sha256']:
             raise ValueError(f'Input changed or missing; use a new run: {path}')
+
+
+def verify_discovery(cfg):
+    """Recheck both discovered file content and the companion directory inventory."""
+    from .discovery import discover_inputs
+    previous = cfg.get('discovery')
+    if cfg.get('conversion') == 'generic-replace-v1' and not previous:
+        raise ValueError('Missing generic discovery evidence; use a new run')
+    if previous and discover_inputs(cfg['source_bsp'], search_dirs=previous['search_dirs']) != previous:
+        raise ValueError('Input discovery changed; companions require a new run')
+
+
+def _load_generic_config(path, value):
+    """Normalize explicit generic inputs without source-specific adapters."""
+    from .discovery import discover_inputs
+    from .presets import load_preset
+    if value['conversion'] != 'generic-replace-v1':
+        raise ValueError('Unsupported conversion; expected generic-replace-v1')
+    if any(key in value for key in ('profile', 'source_profile', 'reference_bsp', 'reference_lmp')):
+        raise ValueError('Do not mix conversion with profile/source_profile/reference paths')
+    if 'mode_lmps' in value:
+        raise ValueError('Generic mode_lmps are discovered from search_dirs')
+    allowed = {'conversion', 'preset', 'source_bsp', 'search_dirs', 'nav', 'exclude',
+               'game_dir', 'tools_dir', 'output_dir', 'resource_roots', 'native_mounts',
+               'threads', 'timeout_seconds', 'atmosphere_policy'}
+    if set(value) - allowed:
+        raise ValueError(f'Unknown configuration keys: {sorted(set(value) - allowed)}')
+
+    def resolve(raw):
+        if not isinstance(raw, str) or not raw or any(ord(c) < 32 for c in raw):
+            raise ValueError('Paths must be nonempty strings without control characters')
+        return (path.parent / raw).resolve()
+
+    cfg = {'conversion': 'generic-replace-v1', 'profile': 'generic-replace-v1',
+           'config_file': path, 'reference_bsp': None, 'reference_lmp': None}
+    for key in ('source_bsp', 'game_dir', 'tools_dir', 'output_dir', 'preset'):
+        if key not in value:
+            raise ValueError(f'Missing configuration key: {key}')
+        if key != 'preset':
+            cfg[key] = resolve(value[key])
+    preset = load_preset(value['preset'])
+    cfg.update(preset=preset.id, preset_file=preset.source_path)
+    if value.get('atmosphere_policy', 'replace') != 'replace':
+        raise ValueError('Generic conversion requires atmosphere_policy=replace')
+    cfg['atmosphere_policy'] = 'replace'
+    cfg['native_mounts'] = value.get('native_mounts', 'gameinfo')
+    if cfg['native_mounts'] not in ('gameinfo', 'resource_roots'):
+        raise ValueError('native_mounts must be gameinfo or resource_roots')
+    for key, default, maximum in (('threads', 4, 64), ('timeout_seconds', 3600, 86400)):
+        number = value.get(key, default)
+        if type(number) is not int or not 1 <= number <= maximum:
+            raise ValueError(f'{key} must be an integer from 1 to {maximum}')
+        cfg[key] = number
+    if 'resource_roots' in value:
+        roots = value['resource_roots']
+        if not isinstance(roots, list) or not roots:
+            raise ValueError('resource_roots must be a nonempty list of directories')
+        cfg['resource_roots'] = [resolve(raw) for raw in roots]
+        if any(not root.is_dir() for root in cfg['resource_roots']):
+            raise ValueError('A configured resource root is not a directory')
+    else:
+        parent = cfg['game_dir'].parent
+        cfg['resource_roots'] = [root for root in (parent / 'update', parent / 'left4dead2_dlc3',
+            parent / 'left4dead2_dlc2', parent / 'left4dead2_dlc1', cfg['game_dir']) if root.is_dir()]
+    if cfg['native_mounts'] == 'resource_roots':
+        if not cfg['resource_roots']:
+            raise ValueError('resource_roots must be a nonempty list of directories')
+        for root in cfg['resource_roots']:
+            if '"' in str(root) or not str(root).isascii():
+                raise ValueError('Resource root paths must be ASCII without a quote for native tools')
+    if 'search_dirs' in value:
+        if not isinstance(value['search_dirs'], list):
+            raise ValueError('search_dirs must be a list of directories')
+        search_dirs = [resolve(raw) for raw in value['search_dirs']]
+        if any(not root.is_dir() for root in search_dirs):
+            raise ValueError('A configured search directory does not exist')
+    else:
+        search_dirs = [root / 'maps' for root in cfg['resource_roots'] if (root / 'maps').is_dir()]
+    discovery = discover_inputs(cfg['source_bsp'], search_dirs=search_dirs)
+    if len(discovery['map_name']) > 64:
+        raise ValueError('Generic map name must be at most 64 characters')
+    unsupported = set(discovery['mode_lmps']) - {'h_0', 'l_0', 's_0'}
+    if unsupported or discovery['unrecognized_companions']:
+        raise ValueError(f'Unsupported generic companions: {sorted(unsupported)}, '
+                         f'{discovery["unrecognized_companions"]}')
+    cfg.update(discovery=discovery, search_dirs=[Path(raw) for raw in discovery['search_dirs']],
+               map_name=discovery['map_name'], source_profile=discovery['map_name'])
+    cfg['mode_lmps'] = {key[0]: Path(item['selected']['path']) for key, item in discovery['mode_lmps'].items()}
+    for key, suffix in (('nav', '.nav'), ('exclude', '_exclude.lst')):
+        selected = discovery[key]['selected']
+        cfg[key] = resolve(value[key]) if key in value else Path(selected['path']) if selected else None
+        if cfg[key] and cfg[key].name.lower() != cfg['map_name'] + suffix:
+            raise ValueError(f'{key.upper()} filename does not match source map')
+    if cfg['nav'] is None:
+        raise ValueError('NAV not found in search directories; provide an explicit nav path')
+    inputs = [cfg['source_bsp'], cfg['nav'], *cfg['mode_lmps'].values()]
+    if cfg['exclude']:
+        inputs.append(cfg['exclude'])
+    for choice in (discovery['nav'], discovery['exclude'], *discovery['mode_lmps'].values()):
+        inputs.extend(Path(item['path']) for item in choice['candidates'])
+    for source in inputs:
+        if not source.is_file():
+            raise ValueError(f'Missing input: {source}')
+    if not (cfg['game_dir'] / 'gameinfo.txt').is_file():
+        raise ValueError('game_dir must contain gameinfo.txt (normally the left4dead2 directory)')
+    for executable in ('vrad.exe', 'bspzip.exe', 'vpk.exe'):
+        if not (cfg['tools_dir'] / executable).is_file():
+            raise ValueError(f'Missing required tool: {cfg["tools_dir"] / executable}')
+    for install in (cfg['game_dir'].parent, cfg['tools_dir'].parent):
+        if cfg['output_dir'].is_relative_to(install):
+            raise ValueError('output_dir must be outside each game/tools installation')
+    if not str(cfg['output_dir']).isascii():
+        raise ValueError('output_dir must use an ASCII path for the native BSPZIP replacement list')
+    if any(source.is_relative_to(cfg['output_dir']) for source in inputs + [path, preset.source_path]):
+        raise ValueError('output_dir must not contain any input/config file')
+    return cfg

@@ -11,6 +11,7 @@ PUBLIC_FILES = ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gi
                 'docs/auto-capture.zh-CN.md',
                 'docs/native-tools.zh-CN.md',
                 'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
+                'docs/generic-conversion.zh-CN.md',
                 'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                 'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json')
 

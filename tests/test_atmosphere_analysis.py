@@ -99,6 +99,15 @@ class AtmosphereAnalysisTests(unittest.TestCase):
         self.assertEqual(len(report['script_entrypoints']), 1)
         self.assertEqual(report['script_entrypoints'][0]['input'], 'BeginScript')
 
+    def test_on_out_prefix_properties_are_not_outputs(self):
+        report = self.analyze(entity(classname='worldspawn') +
+            entity(classname='logic_choreographed_scene', onplayerdeath='0',
+                   OnTrigger1='director,FireConceptToAny,intro,0,-1') +
+            entity(classname='math_remap', out1='0', out2='1') +
+            entity(classname='env_lightglow', OuterMaxDist='100'))
+        self.assertEqual(len(report['outputs']), 1)
+        self.assertEqual(report['issues'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -204,7 +204,7 @@ def monitor(root, report, journal):
 
 def run(root, launcher_path):
     from . import handoff, launch
-    from .workflow import load_run, prepare, tracked, write_json, run_preset, finish
+    from .workflow import load_run, prepare, tracked, write_json, run_preset, run_capture_tonemap, finish
     root = Path(root).resolve()
     with run_lock(root), ExitStack() as shared_locks:
         attempt = root / 'auto-capture'
@@ -235,7 +235,8 @@ def run(root, launcher_path):
             preset = run_preset(report)
             payloads = controls(report['run_id'], report['capture_alias'],
                                 preset.capture_exposure_max if preset else 5,
-                                cfg['listenserver_cfg'], cfg['stable_seconds'])
+                                cfg['listenserver_cfg'], cfg['stable_seconds'],
+                                tonemap_name=run_capture_tonemap(report))
             for name, data in payloads.items():
                 path = attempt / 'files' / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -355,7 +356,7 @@ class CaptureGate:
         return None
 
 
-def controls(run_id, alias, exposure, normal_cfg, stable_seconds):
+def controls(run_id, alias, exposure, normal_cfg, stable_seconds, *, tonemap_name="tonemap_global"):
     marker = token(run_id)
     if not re.fullmatch('mc[0-9a-f]{8}', alias):
         raise ValueError('Invalid capture alias')
@@ -365,9 +366,11 @@ def controls(run_id, alias, exposure, normal_cfg, stable_seconds):
         raise ValueError('Invalid capture exposure')
     if not isinstance(stable_seconds, (int, float)) or not math.isfinite(stable_seconds) or not 1 <= stable_seconds <= 60:
         raise ValueError('Invalid stability interval')
+    if not isinstance(tonemap_name, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", tonemap_name):
+        raise ValueError("Invalid capture tonemap_name")
     script = _SCRIPT
     for key, value in {'RUN': run_id, 'MARKER': marker, 'ALIAS': alias,
-                       'EXPOSURE': format(exposure, '.9g'), 'NORMAL': normal_cfg,
+                       'EXPOSURE': format(exposure, '.9g'), 'NORMAL': normal_cfg, 'TONEMAP': tonemap_name,
                        'STABLE': str(math.ceil(stable_seconds))}.items():
         script = script.replace('@' + key + '@', value)
     return {
@@ -418,7 +421,7 @@ LmcAutoController.timer.GetScriptScope().AutoTick <- function() {
             return 1.0;
         }
         if (Convars.GetFloat("mat_specular") != 0 || Convars.GetFloat("mat_hdr_level") != 2) { job.stable = 0; return 1.0; }
-        local tone = Entities.FindByName(null, "tonemap_global");
+        local tone = Entities.FindByName(null, "@TONEMAP@");
         if (tone == null || !NetProps.HasProp(tone, "m_flCustomAutoExposureMax") ||
             NetProps.GetPropFloat(tone, "m_flCustomAutoExposureMax") != @EXPOSURE@) { job.stable = 0; return 1.0; }
         if (job.phase == "WAIT_MATERIALS") {

@@ -30,6 +30,26 @@ REFERENCE_KEYS = {'fogname', 'postprocessname', 'colorcorrectionname',
                   'tonemapname', 'mainsoundscapename'}
 
 
+def entity_value(entity, key):
+    matches = [p.value for p in entity.pairs if p.key.lower() == key.lower()]
+    if len(matches) > 1:
+        raise ValueError(f'Duplicate case-insensitive entity key: {key}')
+    return matches[0] if matches else None
+
+
+def is_output_pair(entity, pair):
+    # These are keyvalues in Valve's L4D2 base.fgd/left4dead2.fgd, despite
+    # their on/out prefix. Do not treat scene death policy as an IO record.
+    properties = {
+        'logic_choreographed_scene': {'onplayerdeath'},
+        'math_remap': {'out1', 'out2'},
+        'env_lightglow': {'outermaxdist'},
+    }
+    if pair.key.lower() in properties.get(entity_value(entity, 'classname'), ()):
+        return False
+    return pair.key.lower().startswith(('on', 'out')) or '\x1b' in pair.value
+
+
 def _output(value):
     if '\x1b' in value:
         fields = value.split('\x1b')
@@ -53,12 +73,12 @@ def analyze_entities(entities):
     names, classes = defaultdict(list), defaultdict(list)
     records, scripts, references, issues = [], [], [], []
     for i, ent in enumerate(entities):
-        cls, name = ent.one('classname'), ent.one('targetname')
-        classes[cls].append(i)
+        cls, name = entity_value(ent, 'classname'), entity_value(ent, 'targetname')
+        classes[cls.lower() if cls else cls].append(i)
         if name:
-            names[name].append(i)
+            names[name.lower()].append(i)
         records.append(dict(entity_index=i, classname=cls, targetname=name,
-                            hammerid=ent.one('hammerid')))
+                            hammerid=entity_value(ent, 'hammerid')))
         for role, allowed in ROLE_CLASSES.items():
             if cls in allowed:
                 roles[role].append(i)
@@ -71,14 +91,16 @@ def analyze_entities(entities):
         issues.append(dict(code='world_count', count=len(roles['world'])))
 
     def candidates(target, owner):
+        target = target.lower()
         if target == '!self':
             return 'self', [owner]
         if target.startswith('!'):
             return 'dynamic_context', []
         if '*' in target:
-            pattern = re.compile(re.escape(target).replace(r'\*', '.*') + r'\Z')
+            # Source NamesMatch treats the first star as a matching suffix.
+            prefix = target.split('*', 1)[0]
             found = {i for table in (names, classes) for key, indexes in table.items()
-                     if key and pattern.fullmatch(key) for i in indexes}
+                     if key and key.startswith(prefix) for i in indexes}
             return ('wildcard_candidates' if found else 'unresolved'), sorted(found)
         # Union is intentional: do not guess engine name/class dispatch priority.
         found = sorted(set(names.get(target, []) + classes.get(target, [])))
@@ -92,7 +114,7 @@ def analyze_entities(entities):
                 references.append(dict(entity_index=i, pair_index=j, key=pair.key,
                                        target=pair.value, resolution=resolution,
                                        candidate_targets=targets))
-            if not (pair.key.startswith(('On', 'Out')) or '\x1b' in pair.value):
+            if not is_output_pair(ent, pair):
                 continue
             record = dict(entity_index=i, pair_index=j, output=pair.key, raw=pair.value)
             try:

@@ -1,6 +1,6 @@
 # L4D2 Map Converter
 
-在原 BSP 的副本上应用版本化视觉预设，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。0.6.0 新增独立 Windows 原生工具包及明确资源挂载，保留 `c5m1-daylight-v1`、`c4m3-overcast-static-v1` 和可选无注入自动 HDR 反射采样；此前 C2→C4 固定阴天已完成用户实机验收。内置预设无需目标地图 BSP/LMP；无需 VMF、反编译、VBSP 或 VVIS。
+在原 BSP 的副本上应用版本化视觉预设，使用官方 L4D2 VRAD 重烘焙 HDR 世界与静态模型光照，并检查地图结构及玩法数据的保护范围。0.6.0 新增独立 Windows 原生工具包及明确资源挂载，保留 `c5m1-daylight-v1`、`c4m3-overcast-static-v1` 和可选无注入自动 HDR 反射采样；此前 C2→C4 固定阴天已完成用户实机验收。新增通用转换入口详见 [通用转换指南](docs/generic-conversion.zh-CN.md)，旧适配入口保持。内置预设无需目标地图 BSP/LMP；无需 VMF、反编译、VBSP 或 VVIS。
 
 这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。完整游戏和地图资源由使用者的本机安装提供；原生工具可使用本机 Authoring Tools，或单独解压的 [Windows 原生工具包](docs/native-tools.zh-CN.md)。源码 ZIP 不包含 Python 运行环境、Valve 工具或游戏素材。
 
@@ -11,7 +11,7 @@
 | `c2m1_highway` | C2M1 Highway → `c5m1-daylight-v1` | 使用已接受的 `preserve` 策略；历史 18 号 HDR 成果已获用户验收，新构建仍独立检查 |
 | `c6m1_riverbank` | C6M1 Riverbank → `c5m1-daylight-v1` | 默认 `replace` 晴天，可选 `preserve`；已完成晴天 HDR 反射导入，用户测试反馈基本无问题。验收限于该包及实际测试范围 |
 | `c2m1_highway` | 原始 C2M1 Highway → `c4m3-overcast-static-v1` | 固定阴天，使用 `replace`；63 份 HDR 反射导入及原名实机验收通过，无新增雨、雷电或风暴；验收限本次包与实际观察范围 |
-| 其他官方图、自定义图、其他参考天气 | — | 尚不支持 |
+| `conversion: generic-replace-v1` | 任意合法地图名 → C5M1 / C4M3 | 新通用路径；C1M1/C3M1 已通过参数保护检查，C1M1 已在独立目录完成原生构建与 84 份 HDR 反射回填；人工验收待本轮实测，其他输入按能力检查处理 |
 
 C6 默认 **覆盖原暴雨、雷声、风暴/闪电曝光、局部雾与后处理、检查点调色、雨声环境音**。建筑、物件、局部灯光/材质、碰撞、NAV 和无关推进事件保留；例如新娘 Witch 仍触发尸潮，只取消风暴分支。设置 `"atmosphere_policy": "preserve"` 可使用旧行为。当前是受限 C6 适配，并非任意地图识别器；结构审计通过也不等于完整战役流程通过。
 
@@ -64,9 +64,10 @@ python -m l4d2_bsp.workflow auto-capture --run ./runs/c6-c5-001 --launcher launc
 | [自动采样指南](docs/auto-capture.zh-CN.md) | 启动器配置、一条命令采样、失败恢复及人工验收边界 |
 | [独立原生工具包](docs/native-tools.zh-CN.md) | 八文件 Windows 工具包、`tools_dir` 配置、重新打包与验证范围 |
 | [架构与保护合同](docs/architecture.md) | 原理、模块分工、审计边界 |
-| [预设与扩展边界](docs/presets.md) | C5/C4 预设、schema 兼容、版本身份和来源适配边界 |
+| [预设与扩展边界](docs/presets.md) | C5M1/C4M3 预设、schema 兼容、版本身份和来源适配边界 |
 | [通用化演进策略](docs/evolution-strategy.zh-CN.md) | 已确认的通用程序与 Agent 分工、当前地图专用限制、后续阶段与验收标准 |
-| [通用地图分析（第一阶段）](docs/generic-analysis.zh-CN.md) | 不限定地图名的只读输入/角色/IO 分析；尚未接入通用构建 |
+| [通用地图分析（第一阶段）](docs/generic-analysis.zh-CN.md) | 不限定地图名的只读输入/角色/IO 分析 |
+| [通用预设转换](docs/generic-conversion.zh-CN.md) | 通用配置、覆盖规则、拒绝条件、采样和人工复核 |
 | [验证与证据](docs/validation.md) | 已确认范围、历史基线、用户验收记录 |
 | [源码发行说明](docs/release.md) | 依赖、归档范围、仓库与许可证状态 |
 | [变更记录](CHANGELOG.md) | 当前能力和后续工作 |

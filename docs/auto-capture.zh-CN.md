@@ -5,13 +5,13 @@
 ## 适用范围
 
 - Windows、Python 3.11+、可正常启动的完整游戏以及官方工具。Python 代码仅使用标准库。
-- 自动模式当前要求 `atmosphere_policy: replace`，适用于已支持的 C2→C4 固定阴天和 C6→C5 晴天。来源适配、预设和原有审计范围不扩展；C2→C5 的 `preserve` 路径继续使用手动采样。
+- 自动模式当前要求 `atmosphere_policy: replace`，适用于已支持的 C2→C4 固定阴天和 C6→C5 晴天。新增 [通用转换入口](generic-conversion.zh-CN.md) 同样接入自动流程，曝光控制器来自本轮方案；这不扩大人工验收范围。C2→C5 的 `preserve` 路径继续使用手动采样。
 - 已验证的启动方式是使用者已有的 ColdClient INI 启动器。`executable` 适配器提供显式传参接口，但未据此宣称 Steam 正式版启动已实测通过。
 - 已有插件不由工具删除。干扰开场状态、CFG、材质或 VScript 的插件可能使检查拒绝，届时保留证据并使用手动路径排查。
 
 ## 首次配置
 
-先按 [C5 指南](guide.zh-CN.md) 或 [C4 指南](c4m3-guide.zh-CN.md) 创建新的转换配置，执行 `check`、`build`。`build` 不启动游戏。既有运行的配置和产物不可修改。
+先按 [C5M1 指南](guide.zh-CN.md) 或 [C4 指南](c4m3-guide.zh-CN.md) 创建新的转换配置，执行 `check`、`build`。`build` 不启动游戏。既有运行的配置和产物不可修改。
 
 将启动配置示例复制到项目根目录，再编辑其中所有路径：
 

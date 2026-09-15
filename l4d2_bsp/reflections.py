@@ -27,8 +27,8 @@ def _sha(data: bytes) -> str:
 
 def _names(map_name: str, alias: str) -> tuple[str, str]:
     for kind, value in [('map_name', map_name), ('alias', alias)]:
-        if not isinstance(value, str) or not _TOKEN.fullmatch(value):
-            raise ValueError(f'{kind} must be a lowercase map token: letter then letters/digits/underscores, at most 64 characters')
+        if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9_-]{1,64}" if kind == "map_name" else r"[a-z][a-z0-9_]{0,63}", value):
+            raise ValueError(f'{kind} must be a safe lowercase map token of at most 64 characters')
     if map_name == alias:
         raise ValueError('Capture alias must differ from the original map name')
     return f'materials/maps/{map_name}/', f'materials/maps/{alias}/'
@@ -256,7 +256,7 @@ def audit_capture_log(text: str, *, alias: str, marker: str) -> dict:
 
 
 def capture_controls(*, map_name: str, alias: str, marker: str,
-                     exposure_max: float = 5) -> dict[str, bytes]:
+                     exposure_max: float = 5, tonemap_name: str = "tonemap_global") -> dict[str, bytes]:
     """Generate manual load/check/capture/finish controls with a per-run guard.
 
     Check and capture read actual tonemap entity NetProps. The user must set
@@ -272,6 +272,8 @@ def capture_controls(*, map_name: str, alias: str, marker: str,
         raise ValueError('marker must be a lowercase token of at most 64 letters/digits/underscores')
     if isinstance(exposure_max, bool) or not isinstance(exposure_max, (int, float)) or not math.isfinite(exposure_max) or exposure_max <= 0:
         raise ValueError('exposure_max must be a positive finite number')
+    if not isinstance(tonemap_name, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", tonemap_name):
+        raise ValueError("Invalid capture tonemap_name")
     exposure = format(exposure_max, '.9g')
     prefix = marker.upper()
     guard = f'''// Fail closed if any required runtime API or property is unavailable.
@@ -293,12 +295,12 @@ if (hdr == null || hdr != 2)
     throw "{prefix}_REFUSED: HDR level must be 2";
 if (specular == null || specular != 0)
     throw "{prefix}_REFUSED: set mat_specular 0 and wait for material reload";
-local exposure = Entities.FindByName(null, "tonemap_global");
+local exposure = Entities.FindByName(null, "{tonemap_name}");
 if (exposure == null || exposure.GetClassname() != "env_tonemap_controller" ||
-    Entities.FindByName(exposure, "tonemap_global") != null ||
+    Entities.FindByName(exposure, "{tonemap_name}") != null ||
     !NetProps.HasProp(exposure, "m_flCustomAutoExposureMax") ||
     !NetProps.HasProp(exposure, "m_bUseCustomAutoExposureMax"))
-    throw "{prefix}_REFUSED: expected one tonemap_global controller with exposure NetProps";
+    throw "{prefix}_REFUSED: expected one {tonemap_name} controller with exposure NetProps";
 local enabled = NetProps.GetPropInt(exposure, "m_bUseCustomAutoExposureMax");
 local maximum = NetProps.GetPropFloat(exposure, "m_flCustomAutoExposureMax");
 printl("{prefix}_EXPOSURE_ENABLED=" + enabled + " EXPOSURE_MAX=" + maximum);

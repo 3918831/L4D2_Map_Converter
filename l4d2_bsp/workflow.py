@@ -12,7 +12,7 @@ import zipfile
 
 from .binary import BspFile
 from . import __version__
-from .configuration import MAPS, file_hash, input_inventory, load_config, verify_inventory
+from .configuration import MAPS, file_hash, input_inventory, load_config, verify_inventory, verify_discovery
 from .inspect import inspect_bytes
 
 
@@ -28,7 +28,8 @@ def tracked(path):
 
 
 def addon_info(map_name, phase, *, preset_id=None):
-    if map_name not in MAPS.values() or phase not in ('offline', 'final'):
+    if (not isinstance(map_name, str) or not re.fullmatch(r'[a-z0-9_-]{1,64}', map_name)
+            or phase not in ('offline', 'final')):
         raise ValueError('Unsupported addon metadata identity')
     if preset_id is not None and not re.fullmatch('[a-z0-9-]+', preset_id):
         raise ValueError('Invalid preset metadata identity')
@@ -54,6 +55,36 @@ def run_preset(report):
     return preset
 
 
+def run_capture_tonemap(report):
+    """Use the conversion's audited controller for both capture flows."""
+    cfg = report.get('config', {})
+    if cfg.get('conversion') != 'generic-replace-v1':
+        return 'tonemap_global'
+    preflight = report.get('preflight', {})
+    modes = cfg.get('mode_lmps')
+    discovered = cfg.get('discovery', {}).get('mode_lmps')
+    audits = preflight.get('mode_styles')
+    if (not isinstance(modes, dict) or not isinstance(discovered, dict) or not isinstance(audits, dict)
+            or not set(modes) <= set('hls') or set(audits) != set(modes)
+            or set(discovered) != {mode + '_0' for mode in modes}):
+        raise ValueError('Generic mode audit/config/discovery inventory mismatch; use a new run')
+
+    def capture_name(audit):
+        name = audit.get('capture_tonemap') if isinstance(audit, dict) else None
+        plan = audit.get('plan') if isinstance(audit, dict) else None
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', name):
+            raise ValueError('Missing or invalid generic capture tonemap metadata; use a new run')
+        if not isinstance(plan, dict) or plan.get('capture_tonemap') != name:
+            raise ValueError('Generic capture tonemap differs from conversion plan; use a new run')
+        return name
+
+    name = capture_name(preflight.get('base_style'))
+    for audit in audits.values():
+        if capture_name(audit) != name:
+            raise ValueError('Generic capture tonemap differs between BSP and mode patches')
+    return name
+
+
 def load_run(root):
     root = Path(root).resolve()
     result = json.loads((root / 'run.json').read_text(encoding='utf-8'))
@@ -62,6 +93,9 @@ def load_run(root):
     verify_inventory(result['input_inventory'])
     verify_inventory(result.get('tracked_outputs', []))
     run_preset(result)
+    if result.get('config', {}).get('conversion') == 'generic-replace-v1':
+        verify_discovery(result['config'])
+        run_capture_tonemap(result)
     if result.get('model_resource_inventory'):
         from .model_lighting import verify_resource_inventory
         from .native import _pak_entries
@@ -94,10 +128,18 @@ def check(config_path):
     inspection = inspect_bytes(source)
     if any(key.endswith('_error') for key in inspection):
         raise ValueError(f'Input BSP failed structural inspection: {inspection}')
-    output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
     modes, mode_audits = {}, {}
-    for key, path in cfg['mode_lmps'].items():
-        modes[key], mode_audits[key] = transfer_style(path.read_bytes(), preset if preset else cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
+    generic = cfg.get('conversion') == 'generic-replace-v1'
+    if generic:
+        from .generic_conversion import transfer_generic
+        output, audit = transfer_generic(source, preset)
+        for key, path in cfg['mode_lmps'].items():
+            modes[key], mode_audits[key] = transfer_generic(path.read_bytes(), preset, kind='lmp')
+        run_capture_tonemap({'config': cfg, 'preflight': {'base_style': audit, 'mode_styles': mode_audits}})
+    else:
+        output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
+        for key, path in cfg['mode_lmps'].items():
+            modes[key], mode_audits[key] = transfer_style(path.read_bytes(), preset if preset else cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
     # Check concrete new style assets. Complete material dependency closure is
     # not claimed; compiler diagnostics and user loading remain further gates.
     names = ['materials/correction/cc_c5_main.raw', 'materials/sprites/light_glow02_add_noz.vmt']
@@ -111,13 +153,19 @@ def check(config_path):
     missing = [name for name, item in assets['resources'].items() if not item['found']]
     if missing:
         raise ValueError(f'Missing style resources; check resource_roots/full installation: {missing}')
-    report = {'profile': cfg['profile'], 'source_profile': MAPS[cfg['profile']],
+    name = cfg['map_name'] if generic else MAPS[cfg['profile']]
+    report = {'profile': cfg['profile'], 'source_profile': name,
               'preset': preset.metadata() if preset else None,
-              'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': MAPS[cfg['profile']], 'base_style': audit,
+              'atmosphere_policy': cfg['atmosphere_policy'], 'map_name': name, 'base_style': audit,
               'mode_styles': mode_audits, 'style_resources': assets,
               'limitations': ['Resource roots are lookup candidates; game mount order must be checked in game.',
                               'C6 atmosphere follows atmosphere_policy; every new output requires independent runtime testing.',
                               'Only HDR, these two bounded profiles, and observed native resource formats are supported.']}
+    if generic:
+        report.update(conversion=cfg['conversion'], discovery=cfg['discovery'], limitations=[
+            'Only discovered h/l/s index-zero loose entity patches are converted; no missing patches or NAV are generated.',
+            'Resource roots are lookup candidates; game mount order must be checked in game.',
+            'Generic atmosphere replacement remains bounded by the recorded plan; scripts and runtime visuals require independent testing.'])
     return cfg, report, output, modes
 
 
@@ -230,7 +278,8 @@ def prepare(root):
         from .soundscapes import preset_soundscape_assets
         assets.update(preset_soundscape_assets(preset, alias))
     assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'],
-                                  exposure_max=preset.capture_exposure_max if preset else 5))
+                                  exposure_max=preset.capture_exposure_max if preset else 5,
+                                  tonemap_name=run_capture_tonemap(report)))
     capture_dir = root / 'capture'
     if capture_dir.exists():
         raise ValueError('Capture preparation directory already exists; inspect it before retrying')
