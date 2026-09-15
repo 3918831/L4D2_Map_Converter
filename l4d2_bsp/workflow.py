@@ -347,6 +347,11 @@ def _finish(root, capture_path, log_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
+    analyze = commands.add_parser('analyze', help='Read-only map-independent analysis; does not build')
+    analyze.add_argument('--bsp', type=Path, required=True)
+    analyze.add_argument('--preset', required=True)
+    analyze.add_argument('--search-dir', type=Path, action='append', default=[])
+    analyze.add_argument('--resource-root', type=Path, action='append', default=[])
     for name in ('check', 'build'):
         commands.add_parser(name).add_argument('--config', type=Path, required=True)
     for name in ('prepare-capture', 'install-capture', 'collect-capture', 'remove-capture', 'finish-capture', 'status', 'auto-capture', 'recover-auto-capture'):
@@ -359,7 +364,13 @@ def main(argv=None):
             cmd.add_argument('--log', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'check':
+        if args.command == 'analyze':
+            from .analysis import analyze_map
+            report = analyze_map(args.bsp, preset_id=args.preset, search_dirs=args.search_dir,
+                                 resource_roots=args.resource_root)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 2 if report['stages']['analysis'] == 'failed' else 0
+        elif args.command == 'check':
             _, report, _, _ = check(args.config)
             print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
         elif args.command == 'build':

@@ -18,6 +18,7 @@ class ReleaseTests(unittest.TestCase):
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
                      'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md', 'docs/auto-capture.zh-CN.md',
                      'docs/native-tools.zh-CN.md', 'scripts/make_tool_bundle.py',
+                     'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
                      'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                      'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
                      'l4d2_bsp/__init__.py', 'tests/test_example.py', 'examples/c6-c5.example.json'):
@@ -48,6 +49,8 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn('docs/c4m3-guide.zh-CN.md', packed.namelist())
                 self.assertIn('docs/auto-capture.zh-CN.md', packed.namelist())
                 self.assertIn('docs/native-tools.zh-CN.md', packed.namelist())
+                self.assertIn('docs/evolution-strategy.zh-CN.md', packed.namelist())
+                self.assertIn('docs/generic-analysis.zh-CN.md', packed.namelist())
                 self.assertIn('scripts/make_tool_bundle.py', packed.namelist())
                 self.assertFalse(any(n.endswith(('.exe', '.dll')) for n in packed.namelist()))
                 self.assertNotIn('config.local.json', packed.namelist())

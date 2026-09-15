@@ -65,6 +65,8 @@ python -m l4d2_bsp.workflow auto-capture --run ./runs/c6-c5-001 --launcher launc
 | [独立原生工具包](docs/native-tools.zh-CN.md) | 八文件 Windows 工具包、`tools_dir` 配置、重新打包与验证范围 |
 | [架构与保护合同](docs/architecture.md) | 原理、模块分工、审计边界 |
 | [预设与扩展边界](docs/presets.md) | C5/C4 预设、schema 兼容、版本身份和来源适配边界 |
+| [通用化演进策略](docs/evolution-strategy.zh-CN.md) | 已确认的通用程序与 Agent 分工、当前地图专用限制、后续阶段与验收标准 |
+| [通用地图分析（第一阶段）](docs/generic-analysis.zh-CN.md) | 不限定地图名的只读输入/角色/IO 分析；尚未接入通用构建 |
 | [验证与证据](docs/validation.md) | 已确认范围、历史基线、用户验收记录 |
 | [源码发行说明](docs/release.md) | 依赖、归档范围、仓库与许可证状态 |
 | [变更记录](CHANGELOG.md) | 当前能力和后续工作 |
