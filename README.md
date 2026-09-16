@@ -11,7 +11,7 @@
 | `c2m1_highway` | C2M1 Highway → `c5m1-daylight-v1` | 使用已接受的 `preserve` 策略；历史 18 号 HDR 成果已获用户验收，新构建仍独立检查 |
 | `c6m1_riverbank` | C6M1 Riverbank → `c5m1-daylight-v1` | 默认 `replace` 晴天，可选 `preserve`；已完成晴天 HDR 反射导入，用户测试反馈基本无问题。验收限于该包及实际测试范围 |
 | `c2m1_highway` | 原始 C2M1 Highway → `c4m3-overcast-static-v1` | 固定阴天，使用 `replace`；63 份 HDR 反射导入及原名实机验收通过，无新增雨、雷电或风暴；验收限本次包与实际观察范围 |
-| `conversion: generic-replace-v1` | 任意合法地图名 → C5M1 / C4M3 | 新通用路径；C1M1/C3M1 已通过参数保护检查，C1M1 已在独立目录完成原生构建与 84 份 HDR 反射回填；人工验收待本轮实测，其他输入按能力检查处理 |
+| `conversion: generic-replace-v1` | 任意合法地图名 → C5M1 / C4M3 | 新通用路径；C1M1/C3M1 已通过参数保护检查，C1M1 已在独立目录完成原生构建与 84 份 HDR 反射回填；用户已反馈本轮 coop 实测全程无异常，验收限实际观察范围；其他输入按能力检查处理 |
 
 C6 默认 **覆盖原暴雨、雷声、风暴/闪电曝光、局部雾与后处理、检查点调色、雨声环境音**。建筑、物件、局部灯光/材质、碰撞、NAV 和无关推进事件保留；例如新娘 Witch 仍触发尸潮，只取消风暴分支。设置 `"atmosphere_policy": "preserve"` 可使用旧行为。当前是受限 C6 适配，并非任意地图识别器；结构审计通过也不等于完整战役流程通过。
 
