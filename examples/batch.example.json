@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "jobs": [
+    {
+      "id": "c1m1-c5m1",
+      "config": "./configs/c1m1-c5m1.local.json"
+    },
+    {
+      "id": "c3m1-c4m3",
+      "config": "./configs/c3m1-c4m3.local.json"
+    },
+    {
+      "id": "c6m1-c5m1-v2",
+      "config": "./configs/c6m1-c5m1-v2.local.json"
+    }
+  ]
+}

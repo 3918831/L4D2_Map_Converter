@@ -137,19 +137,23 @@ def status_summary(report):
     return summary
 
 
-def check(config_path):
+def check(config_path, *, progress=None):
     from .profiles import transfer_style
     from .resources import lookup_resources
+    notify = progress if progress is not None else lambda stage: None
+    notify("configuration_and_inputs")
     cfg = load_config(config_path)
     preset = None
     if cfg.get('preset'):
         from .presets import load_preset
         preset = load_preset(cfg['preset'])
+    notify('input_format')
     source = cfg['source_bsp'].read_bytes()
     donor = preset if preset else cfg['reference_bsp'].read_bytes()
     inspection = inspect_bytes(source)
     if any(key.endswith('_error') for key in inspection):
         raise ValueError(f'Input BSP failed structural inspection: {inspection}')
+    notify("conversion_plan")
     modes, mode_audits = {}, {}
     generic = cfg.get('conversion') in GENERIC_CONVERSIONS
     if generic:
@@ -172,6 +176,7 @@ def check(config_path):
         names.extend(SOUNDSCAPE_RESOURCES)
     if preset:
         names = preset.required_resources(cfg['atmosphere_policy'])
+    notify('resources')
     assets = lookup_resources(cfg['resource_roots'], names)
     missing = [name for name, item in assets['resources'].items() if not item['found']]
     if missing:
@@ -419,6 +424,9 @@ def _finish(root, capture_path, log_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
+    batch = commands.add_parser('batch-check', help='Read-only batch preflight; writes reports only')
+    batch.add_argument('--manifest', type=Path, required=True)
+    batch.add_argument('--output', type=Path, required=True)
     analyze = commands.add_parser('analyze', help='Read-only map-independent analysis; does not build')
     analyze.add_argument('--bsp', type=Path, required=True)
     analyze.add_argument('--preset', required=True)
@@ -436,7 +444,13 @@ def main(argv=None):
             cmd.add_argument('--log', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'analyze':
+        if args.command == 'batch-check':
+            from .batch import batch_check
+            report = batch_check(args.manifest, args.output)
+            print(json.dumps({'status': report['status'], 'counts': report['counts'],
+                              'output': str(args.output.resolve())}, ensure_ascii=False))
+            return 2 if report['counts']['failed'] else 0
+        elif args.command == 'analyze':
             from .analysis import analyze_map
             report = analyze_map(args.bsp, preset_id=args.preset, search_dirs=args.search_dir,
                                  resource_roots=args.resource_root)
