@@ -12,6 +12,48 @@ def capture_audit(name='__lmc_tonemap_v1', **plan):
 
 
 class GenericConfigurationTests(unittest.TestCase):
+    def test_v2_selection_is_recorded_in_base_and_mode_plans(self):
+        from l4d2_bsp.workflow import check, run_capture_tonemap
+        self.value['conversion'] = 'generic-replace-v2'
+        self.file('input/custom-map_l_0.lmp', wrap(entity('worldspawn', skyname='old') + b'\0', 'lmp'))
+        self.load()
+        with patch('l4d2_bsp.resources.lookup_resources', return_value={'resources': {}}):
+            cfg, report, _, _ = check(self.config)
+        self.assertEqual(cfg['profile'], 'generic-replace-v2')
+        for audit in [report['base_style'], *report['mode_styles'].values()]:
+            self.assertEqual(audit['plan']['conversion'], 'generic-replace-v2')
+        run = {'config': cfg, 'preflight': report}
+        self.assertEqual(run_capture_tonemap(run), '__lmc_tonemap_v1')
+        report['mode_styles']['l']['plan']['conversion'] = 'generic-replace-v1'
+        with self.assertRaisesRegex(ValueError, 'rule|conversion'):
+            run_capture_tonemap(run)
+
+    def test_v2_manifest_cannot_fall_back_to_legacy_or_v1_capture(self):
+        import copy
+        from l4d2_bsp.configuration import input_inventory
+        from l4d2_bsp.workflow import check, load_run, run_capture_tonemap
+        self.value['conversion'] = 'generic-replace-v2'
+        self.load()
+        with patch('l4d2_bsp.resources.lookup_resources', return_value={'resources': {}}):
+            cfg, preflight, _, _ = check(self.config)
+        snapshot = self.file('preset.json', cfg['preset_file'].read_bytes())
+        report = dict(schema_version=1, profile=cfg['profile'], config=cfg, preflight=preflight,
+                      preset=preflight['preset'] | {'snapshot_path': str(snapshot)},
+                      input_inventory=input_inventory(cfg), tracked_outputs=[])
+        report = json.loads(json.dumps(report, default=str))
+        for value in (None, 'generic-replace-v3', 'generic-replace-v1'):
+            changed = copy.deepcopy(report)
+            if value is None:
+                del changed['config']['conversion']
+            else:
+                changed['config']['conversion'] = value
+            (self.root / 'run.json').write_text(json.dumps(changed))
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, 'rule|conversion'):
+                    run_capture_tonemap(changed)
+                with self.assertRaisesRegex(ValueError, 'rule|conversion'):
+                    load_run(self.root)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

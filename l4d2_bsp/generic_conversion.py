@@ -9,6 +9,7 @@ from .style import _read
 
 
 RULE = 'generic-replace-v1'
+RULES = (RULE, 'generic-replace-v2')
 INIT = '__lmc_style_init_v1'
 CLASS_ROLES = {
     'worldspawn': 'world', 'light_environment': 'environment',
@@ -49,12 +50,14 @@ def _flags(entity):
     return int(entity_value(entity, 'spawnflags') or '0')
 
 
-def plan_conversion(data, preset, *, kind='bsp'):
+def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     """Plan from original bytes. Target values come from the validated preset.
 
     Runtime script semantics are not inferred. Static reachability is never
     used as permission to delete upstream logic or particle/event sound entities.
     """
+    if rule not in RULES:
+        raise ValueError('Unsupported generic conversion rule')
     _, _, entities = _read(data, kind)
     graph = analyze_entities(entities)
     if graph['issues']:
@@ -65,7 +68,11 @@ def plan_conversion(data, preset, *, kind='bsp'):
     by_class = {}
     for i, entity in enumerate(entities):
         by_class.setdefault(entity_value(entity, 'classname'), []).append(i)
-    operations, removals, additions = {}, set(), []
+    weather = None
+    if rule == 'generic-replace-v2':
+        from .generic_weather import weather_evidence
+        weather = weather_evidence(entities, graph)
+    operations, removals, additions = {}, set(weather['removed']) if weather else set(), []
     anchor = next((entity_value(e, 'origin') for e in entities
                    if entity_value(e, 'classname') == 'light_environment' and entity_value(e, 'origin')), '0 0 0')
     warnings = []
@@ -119,7 +126,10 @@ def plan_conversion(data, preset, *, kind='bsp'):
         elif cls in ('func_precipitation', 'func_precipitation_blocker'):
             removals.add(i)
         elif cls == 'env_wind':
-            if preset.wind_values is None:
+            if weather is not None:
+                from .generic_weather import WIND_CALM
+                change(i, preset.wind_values if preset.wind_values is not None else WIND_CALM)
+            elif preset.wind_values is None:
                 removals.add(i)
             else:
                 change(i, preset.wind_values)
@@ -180,11 +190,19 @@ def plan_conversion(data, preset, *, kind='bsp'):
         i, targets = output['entity_index'], output['candidate_targets']
         if i in removals:
             raise ValueError(f'Weather/sun entity has outputs requiring review: {i}')
-        visual_targets = [j for j in targets if entity_value(entities[j], 'classname') in VISUAL]
+        extra_reason = weather['cuts'].get((i, output['pair_index'])) if weather else None
+        if (weather is not None and targets and output['input'].lower() == 'kill'
+                and all(entity_value(entities[j], 'classname') == 'env_wind' for j in targets)):
+            continue  # Preserve template/parent lifecycle while normalizing wind values.
+        visual_targets = [j for j in targets if entity_value(entities[j], 'classname') in VISUAL
+                          or (weather and j in weather['removed']) or extra_reason]
         if visual_targets:
             if len(visual_targets) != len(targets):
                 raise ValueError(f'Mixed visual/nonvisual output target: {i}/{output["pair_index"]}')
-            if output['input'].lower() not in VISUAL_INPUTS:
+            from .generic_weather import EXTRA_INPUTS
+            allowed_extra = weather is not None and all(output['input'].lower() in
+                EXTRA_INPUTS.get(entity_value(entities[j], 'classname'), set()) for j in targets)
+            if output['input'].lower() not in VISUAL_INPUTS and not allowed_extra and not extra_reason:
                 raise ValueError(f'Unknown input to visual entity requires review: {i}/{output["input"]}')
             if any(o['entity_index'] in visual_targets for o in graph['outputs']):
                 raise ValueError(f'Visual target has outputs requiring review: {i}/{output["target"]}')
@@ -192,7 +210,7 @@ def plan_conversion(data, preset, *, kind='bsp'):
                 lifecycle_targets.update(visual_targets)
             operations.setdefault(i, dict(entity_index=i, fields={}, remove_outputs=[]))['remove_outputs'].append(
                 dict(pair_index=output['pair_index'], key=output['output'], value=output['raw'],
-                     reason='direct_visual_writer'))
+                     reason=extra_reason or 'direct_visual_writer'))
     # Deleting an entity used as a template or parenting target can affect
     # nonvisual behavior even without an IO edge. Refuse that ambiguity.
     affected = removals | lifecycle_targets
@@ -219,22 +237,27 @@ def plan_conversion(data, preset, *, kind='bsp'):
     if graph['script_entrypoints']:
         warnings.append('Source scripts retained; external/dynamic atmosphere writers are not statically proven absent.')
     if by_class.get('info_particle_system') or by_class.get('ambient_generic'):
-        warnings.append('Particle systems and event sounds retained; weather ownership is not inferred from names.')
+        warnings.append('Particle systems and event sounds retained; weather ownership is not inferred from names.'
+                        if weather is None else
+                        'Uncatalogued particles and event sounds retained; weather ownership is not inferred from names.')
     warnings.extend(['All soundscape regions use the preset outdoor definition; spatial placement is retained.',
                      'Existing local lights/materials and sky_camera transforms are preserved.',
                      'Only explicit preset fields plus documented activation/master defaults are normalized.'])
-    return dict(schema_version=1, conversion=RULE, kind=kind, source_sha256=sha256(data),
+    result = dict(schema_version=1, conversion=rule, kind=kind, source_sha256=sha256(data),
                 preset=preset.metadata(), capture_tonemap=capture_name,
                 operations=[op for i, op in sorted(operations.items()) if i not in removals and
                             (op['fields'] or op['remove_outputs'])],
                 removed_entities=sorted(removals),
                 added_entities=[[[key, value] for key, value in pairs] for pairs in additions],
                 coverage_warnings=warnings)
+    if weather is not None:
+        result['weather_evidence'] = weather['audit']
+    return result
 
 
 def apply_plan(data, plan, preset):
     """Reject arbitrary or stale edits by reproducing the authorized rule plan."""
-    if not isinstance(plan, dict) or plan != plan_conversion(data, preset, kind=plan.get('kind', 'bsp')):
+    if not isinstance(plan, dict) or plan != plan_conversion(data, preset, kind=plan.get('kind', 'bsp'), rule=plan.get('conversion', RULE)):
         raise ValueError('Plan differs from the current input, preset or conversion rules')
     parsed, text, entities = _read(data, plan['kind'])
     expected = [[(p.key, p.value) for p in e.pairs] for e in entities]
@@ -300,12 +323,12 @@ def apply_plan(data, plan, preset):
         struct.pack_into('<i', header, 12, len(updated))
         output = bytes(header) + data[20:offset] + updated + data[offset + length:]
         _read(output, 'lmp')
-    return output, dict(plan=plan, conversion=RULE, capture_tonemap=plan['capture_tonemap'],
+    return output, dict(plan=plan, conversion=plan['conversion'], capture_tonemap=plan['capture_tonemap'],
                         source_sha256=sha256(data), output_sha256=sha256(output),
                         non_entity_payloads_unchanged=True, protected_entity_bytes_unchanged=True,
                         protected_io_unchanged=True, protected_io_count=protected_count,
                         entity_counts=[len(entities), len(after)], coverage_warnings=plan['coverage_warnings'])
 
 
-def transfer_generic(data, preset, *, kind='bsp'):
-    return apply_plan(data, plan_conversion(data, preset, kind=kind), preset)
+def transfer_generic(data, preset, *, kind='bsp', rule=RULE):
+    return apply_plan(data, plan_conversion(data, preset, kind=kind, rule=rule), preset)

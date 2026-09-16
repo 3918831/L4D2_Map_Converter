@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
+GENERIC_CONVERSIONS = ('generic-replace-v1', 'generic-replace-v2')
 MAPS = {'c2-c5': 'c2m1_highway', 'c6-c5': 'c6m1_riverbank'}
 SOURCE_ADAPTERS = {'c2m1_highway': 'c2m1_highway'}
 MAPS.update(SOURCE_ADAPTERS)
@@ -173,7 +174,7 @@ def verify_discovery(cfg):
     """Recheck both discovered file content and the companion directory inventory."""
     from .discovery import discover_inputs
     previous = cfg.get('discovery')
-    if cfg.get('conversion') == 'generic-replace-v1' and not previous:
+    if cfg.get('conversion') in GENERIC_CONVERSIONS and not previous:
         raise ValueError('Missing generic discovery evidence; use a new run')
     if previous and discover_inputs(cfg['source_bsp'], search_dirs=previous['search_dirs']) != previous:
         raise ValueError('Input discovery changed; companions require a new run')
@@ -183,8 +184,8 @@ def _load_generic_config(path, value):
     """Normalize explicit generic inputs without source-specific adapters."""
     from .discovery import discover_inputs
     from .presets import load_preset
-    if value['conversion'] != 'generic-replace-v1':
-        raise ValueError('Unsupported conversion; expected generic-replace-v1')
+    if value['conversion'] not in GENERIC_CONVERSIONS:
+        raise ValueError('Unsupported conversion; expected generic-replace-v1 or generic-replace-v2')
     if any(key in value for key in ('profile', 'source_profile', 'reference_bsp', 'reference_lmp')):
         raise ValueError('Do not mix conversion with profile/source_profile/reference paths')
     if 'mode_lmps' in value:
@@ -200,7 +201,7 @@ def _load_generic_config(path, value):
             raise ValueError('Paths must be nonempty strings without control characters')
         return (path.parent / raw).resolve()
 
-    cfg = {'conversion': 'generic-replace-v1', 'profile': 'generic-replace-v1',
+    cfg = {'conversion': value['conversion'], 'profile': value['conversion'],
            'config_file': path, 'reference_bsp': None, 'reference_lmp': None}
     for key in ('source_bsp', 'game_dir', 'tools_dir', 'output_dir', 'preset'):
         if key not in value:

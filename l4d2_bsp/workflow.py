@@ -12,7 +12,7 @@ import zipfile
 
 from .binary import BspFile
 from . import __version__
-from .configuration import MAPS, file_hash, input_inventory, load_config, verify_inventory, verify_discovery
+from .configuration import GENERIC_CONVERSIONS, MAPS, file_hash, input_inventory, load_config, verify_inventory, verify_discovery
 from .inspect import inspect_bytes
 
 
@@ -58,9 +58,26 @@ def run_preset(report):
 def run_capture_tonemap(report):
     """Use the conversion's audited controller for both capture flows."""
     cfg = report.get('config', {})
-    if cfg.get('conversion') != 'generic-replace-v1':
-        return 'tonemap_global'
     preflight = report.get('preflight', {})
+    modes_metadata = preflight.get('mode_styles', {})
+    all_audits = [preflight.get('base_style'), *(modes_metadata.values() if isinstance(modes_metadata, dict) else [])]
+    identities = [cfg.get('conversion'), cfg.get('profile'), report.get('profile'),
+                  preflight.get('conversion'), preflight.get('profile')]
+    for audit in all_audits:
+        if isinstance(audit, dict):
+            identities.append(audit.get('conversion'))
+            if isinstance(audit.get('plan'), dict):
+                identities.append(audit['plan'].get('conversion'))
+    generic_marker = any(isinstance(value, str) and value.startswith('generic-replace-') for value in identities)
+    if (cfg.get('conversion') is not None or generic_marker) and cfg.get('conversion') not in GENERIC_CONVERSIONS:
+        raise ValueError('Missing or unsupported generic conversion rule; use a new run')
+    if 'generic-replace-v2' in identities and (
+            cfg.get('conversion') != 'generic-replace-v2' or cfg.get('profile') != 'generic-replace-v2'
+            or any(isinstance(value, str) and value.startswith('generic-replace-') and value != 'generic-replace-v2'
+                   for value in identities)):
+        raise ValueError('Generic conversion rule identity mismatch; use a new run')
+    if cfg.get('conversion') not in GENERIC_CONVERSIONS:
+        return 'tonemap_global'
     modes = cfg.get('mode_lmps')
     discovered = cfg.get('discovery', {}).get('mode_lmps')
     audits = preflight.get('mode_styles')
@@ -70,6 +87,11 @@ def run_capture_tonemap(report):
         raise ValueError('Generic mode audit/config/discovery inventory mismatch; use a new run')
 
     def capture_name(audit):
+        if cfg.get('conversion') == 'generic-replace-v2' and (
+                not isinstance(audit, dict) or not isinstance(audit.get('plan'), dict)
+                or audit['plan'].get('conversion') != cfg['conversion']
+                or audit.get('conversion') != cfg['conversion']):
+            raise ValueError('Generic conversion rule/audit mismatch; use a new run')
         name = audit.get('capture_tonemap') if isinstance(audit, dict) else None
         plan = audit.get('plan') if isinstance(audit, dict) else None
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', name):
@@ -93,9 +115,9 @@ def load_run(root):
     verify_inventory(result['input_inventory'])
     verify_inventory(result.get('tracked_outputs', []))
     run_preset(result)
-    if result.get('config', {}).get('conversion') == 'generic-replace-v1':
+    run_capture_tonemap(result)
+    if result.get('config', {}).get('conversion') in GENERIC_CONVERSIONS:
         verify_discovery(result['config'])
-        run_capture_tonemap(result)
     if result.get('model_resource_inventory'):
         from .model_lighting import verify_resource_inventory
         from .native import _pak_entries
@@ -129,12 +151,13 @@ def check(config_path):
     if any(key.endswith('_error') for key in inspection):
         raise ValueError(f'Input BSP failed structural inspection: {inspection}')
     modes, mode_audits = {}, {}
-    generic = cfg.get('conversion') == 'generic-replace-v1'
+    generic = cfg.get('conversion') in GENERIC_CONVERSIONS
     if generic:
         from .generic_conversion import transfer_generic
-        output, audit = transfer_generic(source, preset)
+        rule_options = {'rule': cfg['conversion']} if cfg['conversion'] != 'generic-replace-v1' else {}
+        output, audit = transfer_generic(source, preset, **rule_options)
         for key, path in cfg['mode_lmps'].items():
-            modes[key], mode_audits[key] = transfer_generic(path.read_bytes(), preset, kind='lmp')
+            modes[key], mode_audits[key] = transfer_generic(path.read_bytes(), preset, kind='lmp', **rule_options)
         run_capture_tonemap({'config': cfg, 'preflight': {'base_style': audit, 'mode_styles': mode_audits}})
     else:
         output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
