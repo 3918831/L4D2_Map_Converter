@@ -427,6 +427,10 @@ def main(argv=None):
     batch = commands.add_parser('batch-check', help='Read-only batch preflight; writes reports only')
     batch.add_argument('--manifest', type=Path, required=True)
     batch.add_argument('--output', type=Path, required=True)
+    batch_run_cmd = commands.add_parser('batch-run', help='Serial build and automatic capture; final packages remain uninstalled')
+    batch_run_cmd.add_argument('--manifest', type=Path, required=True)
+    batch_run_cmd.add_argument('--output', type=Path, required=True)
+    batch_run_cmd.add_argument('--launcher', type=Path, required=True)
     analyze = commands.add_parser('analyze', help='Read-only map-independent analysis; does not build')
     analyze.add_argument('--bsp', type=Path, required=True)
     analyze.add_argument('--preset', required=True)
@@ -444,7 +448,13 @@ def main(argv=None):
             cmd.add_argument('--log', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'batch-check':
+        if args.command == 'batch-run':
+            from .batch_run import batch_run
+            report = batch_run(args.manifest, args.output, args.launcher)
+            print(json.dumps({'status': report['status'], 'counts': report['counts'],
+                              'output': str(args.output.resolve())}, ensure_ascii=False))
+            return 0 if report['status'] == 'complete' else 2
+        elif args.command == 'batch-check':
             from .batch import batch_check
             report = batch_check(args.manifest, args.output)
             print(json.dumps({'status': report['status'], 'counts': report['counts'],
