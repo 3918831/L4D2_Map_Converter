@@ -353,3 +353,20 @@ python -m l4d2_bsp.workflow check --config config.local.json
 - 完整回归 392 项：389 通过，3 项 Windows 符号链接权限跳过。新增角色曝光、缺失方向光保护、schema 非法值、资源/发行包和采样 guard 测试；发布包在独立目录解压后再跑相关 26 项，25 通过、1 项权限跳过。独立包 SHA256 `f2f5b45b6c948e2d7e27e4918feeb6fe37917ff58bd7e8376b046cc9e9a3b3d5`，后补本段文档不改变测试代码。
 
 本机证据在 `artifacts/c7m1-preset-20260918/`。本轮没有 VRAD 构建、游戏采样或部署新 C7 风格地图，没有 C7 目标的人工效果结论；下一轮建议使用原始 C2M1，便于对照已有 C5M1/C4M3 结果。合作模式验收不能代替感染者／ghost 视角验证。
+
+### C2M1→C7M1：机器流程完成，待人工验收
+
+2026-09-18 用户指定先用 C2M1 应用新预设。运行 `3db9105c6c30459b`（`runs/c2m1-c7m1-v3-01`）使用原始 C2M1、generic-replace-v3 和默认 preserve 材质策略。输入 SHA256 `d07bca1e51805ae0feedea28edc8f31d9a48645ef0b74ee35547ca58b3e3aaf9`，与本机先前提取的官方 C2M1 字节一致，并非在旧风格包上叠加转换。
+
+从提交 `b7503c8` 对应的独立发布包解压执行，代码包 SHA256 `1e56e2d6adde4206308704516de5dce345af7436cc2084fb6a3d3e344afae09c`；八文件 Windows 原生工具包重新解压，SHA256 `c966088e05a9d8ea59f9e46b5f247b874c37e86c63f0f82d14518161a05550a8`。本轮没有修改转换算法或加入 C2 专用分支。
+
+- 基础 BSP 及 h/l/s 补丁的受保护玩法 IO 检查通过；最终四个容器的氛围角色、角色曝光/Bloom 初始化与预设逐项一致，无额外 light_directional。幸存者曝光 max 9/Bloom 0，感染者及 ghost max 3/Bloom 1；后两者仅做参数检查，未验收对应视角。
+- VRAD 完成 5,764 个 HDR 面和 38,443 个 detail props；面拓扑、叶几何、sprp、detail 布置及受保护 lump 检查通过，SKY/SKY2D 标志变化为 0。compiler_diagnostics 为空。
+- 自动启动正常测试启动器，单次 CAPTURE_SENT，经重载、结束采样与正常 GAME_EXITED 后生成最终包；63 份 HDR cubemap 全部更新，严格资源审计通过。保留原 LDR/default 资源；原生输出中四份纹理含非有限 alpha，按现有策略报告并保留，所有存储 RGB 有限。状态标记本身不作为画面正确性的证明。
+- 147 项临时采样路径均已清理，启动器 INI 恢复原哈希。原有 207 份内嵌 VMT 字节保持，NAV/exclude 与输入一致。游戏日志仍有可选别名文件缺失、现有 SourceMod 联网更新和 HUD 材质提示，不宣称日志零警告。
+
+最终 VPK SHA256 `3de958bc9ac18d1ea118dbd7fec6807d60dd25aa35926879858fb7bec7cf678b`，原生解包及八个条目逐文件哈希通过，包含 BSP、NAV、exclude、h/l/s 补丁、addoninfo 和本图 soundscape。状态 `final_ready_pending_user_validation`；机器检查通过不等于人工画面接受。
+
+部署前确认游戏关闭、没有其他 C2 覆盖冲突，将旧 C2→C4 VPK 可逆改名为 `.vpk.disabled-before-c7m1`，新增本轮 VPK 及 `lmc_c2_c7_validate` / `lmc_c2_c7_info` CFG，安装文件与备份哈希复核通过；原图和其他插件保持。此步骤是本次测试辅助部署，不代表 batch-run 新增自动最终部署功能。
+
+本机证据在 `artifacts/c2-c7m1-20260918/`：`provenance.json`、`input-origin-check.json`、`machine-verification.json`、`validation-deployment.json` 和 `manual-validation.zh-CN.md`。人工检查采用熟悉的赛车/卡车机位及其他室外、室内、遮阴区域，建议截图 `C2M1-C7M1-stage-final.png`。截至本记录尚未收到本轮画面反馈，不将 C2→C7 列为人工验收通过。
