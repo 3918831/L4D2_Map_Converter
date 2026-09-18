@@ -18,4 +18,4 @@ packages = ["l4d2_bsp"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-l4d2_bsp = ["preset_data/c5m1-daylight-v1.json", "preset_data/c4m3-overcast-static-v1.json", "preset_data/c7m1-hazy-static-v1.json"]
+l4d2_bsp = ["preset_data/c5m1-daylight-v1.json", "preset_data/c4m3-overcast-static-v1.json", "preset_data/c7m1-hazy-static-v1.json", "preset_data/c10m3-night-v1.json"]

@@ -16,7 +16,8 @@ from .patch import _validate_value
 
 
 PRESET_ID = 'c5m1-daylight-v1'
-_BUILTINS = {PRESET_ID: 1, 'c4m3-overcast-static-v1': 2, 'c7m1-hazy-static-v1': 3}
+_BUILTINS = {PRESET_ID: 1, 'c4m3-overcast-static-v1': 2, 'c7m1-hazy-static-v1': 3,
+             'c10m3-night-v1': 3}
 _TONEMAP_ROLES = {'env_tonemap_controller': 'survivor',
     'env_tonemap_controller_infected': 'infected', 'env_tonemap_controller_ghost': 'ghost'}
 _TONEMAP_ACTIONS = (('SetAutoExposureMin', 'minimum'), ('SetAutoExposureMax', 'maximum'),

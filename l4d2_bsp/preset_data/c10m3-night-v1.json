@@ -1,0 +1,175 @@
+{
+  "schema_version": 3,
+  "id": "c10m3-night-v1",
+  "supported_sources": [],
+  "atmosphere_policy": "replace",
+  "roles": {
+    "world": {
+      "skyname": "sky_day01_09_hdr"
+    },
+    "environment": {
+      "_light": "52 101 124 10",
+      "_ambient": "18 72 99 2",
+      "_lightHDR": "-1 -1 -1 1",
+      "_ambientHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "0.7",
+      "_AmbientScaleHDR": "0.7",
+      "angles": "0 148 0",
+      "pitch": "-65",
+      "SunSpreadAngle": "0.5"
+    },
+    "directional": {
+      "_light": "22 102 146 1",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": ".7",
+      "angles": "0 150 0",
+      "pitch": "-90",
+      "SunSpreadAngle": "0"
+    },
+    "shadow": {
+      "color": "3 4 10",
+      "angles": "80 180 0",
+      "distance": "70",
+      "disableallshadows": "0",
+      "enableshadowsfromlocallights": "1"
+    },
+    "fog_outdoor": {
+      "fogcolor": "14 61 86",
+      "fogcolor2": "255 255 255",
+      "fogstart": "128",
+      "fogend": "2990",
+      "fogmaxdensity": "1",
+      "foglerptime": "4",
+      "HDRColorScale": ".6",
+      "farz": "3000",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "0",
+      "angles": "0 0 0",
+      "heightFogStart": "0",
+      "heightFogMaxDensity": "1",
+      "heightFogDensity": "0"
+    },
+    "fog_interior": {
+      "fogcolor": "14 61 86",
+      "fogcolor2": "255 255 255",
+      "fogstart": "128",
+      "fogend": "2800",
+      "fogmaxdensity": "1",
+      "foglerptime": "4",
+      "HDRColorScale": ".6",
+      "farz": "3000",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "0",
+      "angles": "0 0 0",
+      "heightFogStart": "0",
+      "heightFogMaxDensity": "1",
+      "heightFogDensity": "0"
+    },
+    "sky": {
+      "fogcolor": "14 61 86",
+      "fogcolor2": "255 255 255",
+      "fogstart": "-64",
+      "fogend": "3000",
+      "fogmaxdensity": "1",
+      "HDRColorScale": ".6",
+      "fogenable": "1",
+      "fogdir": "1 0 0"
+    },
+    "color_main": {
+      "filename": "materials/correction/smalltown_ranchhouse.raw"
+    },
+    "color_intro": {
+      "filename": "materials/correction/smalltown_ranchhouse.raw"
+    },
+    "color_checkpoint": {
+      "filename": "materials/correction/checkpoint.raw"
+    },
+    "postprocess_exterior": {
+      "vignettestart": "0.8",
+      "vignetteend": "3",
+      "vignetteblurstrength": "0",
+      "topvignettestrength": "1",
+      "localcontraststrength": "-0.2",
+      "localcontrastedgestrength": "-0.7",
+      "grainstrength": "1",
+      "fadetoblackstrength": "0",
+      "fadetime": "2"
+    },
+    "sun": null
+  },
+  "exposure": {
+    "survivor": {
+      "minimum": "0.25",
+      "maximum": "7",
+      "rate": "0.5",
+      "bright_pixels": null,
+      "bloom_scale": "1",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    },
+    "infected": {
+      "minimum": "0.25",
+      "maximum": "7",
+      "rate": "0.5",
+      "bright_pixels": null,
+      "bloom_scale": "1",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    },
+    "ghost": {
+      "minimum": "0.25",
+      "maximum": "7",
+      "rate": "0.5",
+      "bright_pixels": null,
+      "bloom_scale": "1",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    }
+  },
+  "wind": null,
+  "resources": {
+    "common": [
+      "materials/correction/checkpoint.raw",
+      "materials/correction/smalltown_ranchhouse.raw",
+      "materials/skybox/sky_day01_09_hdrbk.vmt",
+      "materials/skybox/sky_day01_09_hdrdn.vmt",
+      "materials/skybox/sky_day01_09_hdrft.vmt",
+      "materials/skybox/sky_day01_09_hdrlf.vmt",
+      "materials/skybox/sky_day01_09_hdrrt.vmt",
+      "materials/skybox/sky_day01_09_hdrup.vmt"
+    ],
+    "clear": [
+      "sound/ambient/atmosphere/crucial_town_ambience.wav"
+    ]
+  },
+  "soundscapes": {
+    "outdoor": "lmc_c10m3_night_v1.outdoor",
+    "indoor": "lmc_c10m3_night_v1.indoor"
+  },
+  "soundscape_definition": {
+    "outdoor": {
+      "dsp": "1",
+      "loops": [
+        {
+          "wave": "ambient/atmosphere/crucial_town_ambience.wav",
+          "volume": "0.3",
+          "pitch": "100"
+        }
+      ]
+    },
+    "indoor": {
+      "dsp": "1",
+      "loops": [
+        {
+          "wave": "ambient/atmosphere/crucial_town_ambience.wav",
+          "volume": "0.09",
+          "pitch": "100"
+        }
+      ]
+    }
+  }
+}
