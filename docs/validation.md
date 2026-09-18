@@ -326,3 +326,13 @@ python -m l4d2_bsp.workflow check --config config.local.json
 离线包经原生解包复核，七个条目，SHA256 `47b57563f90983562ec49aec7c5728cf9d2d07e095c32950d73b230573a7a12e`。只读扫描 17 个 addons VPK 未发现 C5M1 覆盖冲突；尚未部署最终包。当前用户上一轮游戏进程仍运行，已请求退出，故停在自动采样前；不把 offline_ready 称为完整端到端或人工通过。程序未改动，本轮无需重复代码回归，使用该地图真实构建审计验证现有流程。
 
 材质版反馈后另核对 19 项原始输入与已部署文件哈希均不变，证据 `material-isolation-recheck.json`；仍未执行禁用 VPK 后进入原图的运行时 A/B 实验。下一步在游戏关闭后继续 C5M1 自动采样、最终验证与人工部署。
+
+### C5M1→C4M3：自动采样与最终校验完成
+
+用户确认退出后，继续同一运行 `5a3aef3dc95f49d4`，未重复烘焙。自动启动正常测试版启动器，单次 CAPTURE_SENT、重载、正常 GAME_EXITED，回填 41 份 HDR cubemap，全部与本轮烘焙基线不同；严格资源审计确认非 PAK lump、原 PAK 内容、采样坐标记录保持，LDR/default 反射保留。仅控制台状态标记不作为采样完成证明，以最终 BSP 审计为准。
+
+最终包 SHA256 `feab6116871bdef025c2f430f330bc46db0b1d8a1ff20285f4d538be99d67ea1`，原生解包及逐文件哈希通过，七个条目包含 BSP、NAV、exclude、h/l 补丁、addoninfo 和限定 C5M1 的 soundscape 文件。22 份原始内嵌 VMT 保持，NAV/exclude 与输入字节一致，使用默认材质保留。102 项采样清理收据路径均已不存在，启动器 INI 原哈希恢复；游戏日志仍有 HUD 材质、别名地图可选文件缺失、现有 SourceMod 更新联网失败等提示，不宣称日志零警告。
+
+机器证据 `artifacts/sample-expansion-20260918/c5-machine-verification.json`，状态 final_ready_pending_user_validation。本项机器端到端已完成，但尚未收到 C5M1 的人工画面/路线反馈；因此不能将本输入加入已人工验收清单。C13M1 的 MODEL-001 和材质 VIS-003 仍保留，未修改算法以隐藏这些边界。
+
+最终部署前再次检查游戏关闭、同图覆盖冲突及目标路径不存在，新增一份 C5M1 VPK 和 `lmc_sample_c5_validate` / `lmc_sample_c5_info` 两个手动 CFG；安装后哈希复核通过，原 C4/C7 包及其他插件保持。收据为 `c5-validation-deployment.json`，具体人工步骤为同目录 `manual-c5-validation.zh-CN.md`。此部署是本次测试辅助操作，不代表 batch-run 已新增自动最终部署功能。
