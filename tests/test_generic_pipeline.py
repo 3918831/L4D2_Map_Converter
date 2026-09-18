@@ -12,6 +12,30 @@ def capture_audit(name='__lmc_tonemap_v1', **plan):
 
 
 class GenericConfigurationTests(unittest.TestCase):
+    def test_opt_in_material_policy_is_applied_and_default_preserves_original_output(self):
+        from test_material_policy import resources, scene
+        from l4d2_bsp.workflow import check
+        from l4d2_bsp.native import _pak_entries
+        from l4d2_bsp.binary import BspFile
+        for name,data in resources().items():self.file('game/left4dead2/'+name,data)
+        self.file('input/custom-map.bsp',scene())
+        self.load()
+        with patch('l4d2_bsp.resources.lookup_resources',return_value={'resources':{}}):
+            _,legacy,old,_=check(self.config)
+        self.assertNotIn('material_policy',legacy)
+        self.value['material_policy']='catalogued-static-reflections-v1';self.load()
+        with patch('l4d2_bsp.resources.lookup_resources',return_value={'resources':{}}):
+            cfg,report,new,_=check(self.config)
+        self.assertEqual(cfg['material_policy'],'catalogued-static-reflections-v1')
+        self.assertNotEqual(old,new)
+        self.assertEqual(len(report['material_policy']['model_copies']),1)
+        self.assertTrue(any(n.startswith('models/lmc/') for n in _pak_entries(BspFile.parse(new).lump_bytes(40))))
+        self.value['material_policy']='preserve';self.load()
+        with patch('l4d2_bsp.resources.lookup_resources',return_value={'resources':{}}):
+            self.assertEqual(check(self.config)[2],old)
+        self.value['material_policy']='unknown'
+        with self.assertRaisesRegex(ValueError,'material'):self.load()
+
     def test_v3_pipeline_removes_lightning_and_rejects_rule_downgrade(self):
         import copy
         from l4d2_bsp.workflow import check, run_capture_tonemap

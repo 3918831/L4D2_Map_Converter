@@ -283,3 +283,24 @@ python -m l4d2_bsp.workflow check --config config.local.json
 - 反射回填 37 份 HDR cubemap；最终 VPK 原生解包验证通过。解包后的基础图及 h/l/s 均不含上述三类粒子；141 份原始内嵌 VMT 与纹理名称数据保持，不调整材质响应。最终包 SHA256：`e565c7b12348b4fbcf6b3924c8c4d74048b7388413c9efa4ab5059ae106851f2`。
 - 本机证据位于 `artifacts/lightning-v3-20260918/`（新旧规则差异、machine-verification、独立源码/工具、部署收据、复测指南）；运行目录 `runs/lightning-v3-c4m3-c5m1-01/`。这些本地大文件和游戏资源不加入源码仓库。
 - 待人工验收：正常启动测试版游戏，执行 `exec lmc_lightning_v3_validate`，进图后执行 `exec lmc_lightning_v3_info`。室外可执行 `exec lmc_lightning_v3_probe` 主动调用原粒子闪电 relay，再正常游玩观察数分钟。这个源图名称仅用于本地回归探针，不进入产品通用规则。旧 C4 包可逆停用保留，C7 包与其他插件保留。
+
+### v3 人工接受与原图隔离检查（2026-09-18）
+
+用户随后确认没有闪电或闪光、符合预期，接受 VIS-002 通用规则的本次 C4M3 实测结果。人工反馈绑定 `c4e6c520aae9489f` 最终包，保存于该运行的 `manual-validation/feedback-20260918-v3`；不扩大为所有地图、全流程或其他模式验收。
+
+按用户要求检查 VPK 隔离：最终包仅包含 addoninfo、BSP、NAV、exclude 和 h/l/s 补丁七个条目，没有全局材质或配置覆盖；原 BSP 的 141 份内嵌 VMT 未变。27 份历史原始文件记录、19 项本次输入及 447 项模型资源快照核对通过，自动采样临时文件均已清理，启动器配置哈希恢复。证据为本地 `artifacts/lightning-v3-20260918/package-isolation-audit.json`。
+
+禁用全部同图覆盖包后完全重启游戏，地图内容将重新从原安装加载；本轮检查没有代替实际运行原图的 A/B 实测。单独留下的手动 CFG/日志不属于 VPK；手动执行的画质或调试 cvar 是游戏设置，不能宣称 VPK 停用会恢复任意此前设置。
+
+### 可选材质反光策略：C4M3→C5M1（2026-09-18）
+
+用户随后授权实施 VIS-003 的可选材质优化。新增显式 `catalogued-static-reflections-v1`，默认 preserve 仍保持原行为；规则按 MDL 实际材质引用匹配四项资源目录，不绑定地图名。只将受支持材质的显式 envmaptint/Phong boost 乘 0.5，不改变 Fresnel、贴图湿痕或全局渲染开关。
+
+- 自动回归 386 项：383 通过、3 项因 Windows 符号链接权限跳过。覆盖默认字节等价、私有路径、原 PAK/实例保护、复杂材质跳过、缺碰撞资源无部分写入、输入变化及策略身份漂移等。独立代码复核未发现待修项。
+- 从独立源码包 `2406dc4d3dceec00b6245129243aae69edb9364f3ee0f9f666b5fca4977ccb36` 及重新解压的八文件工具包运行，32 个执行 Python 模块与工作区一致；该实验包早于后补结果文档和示例。
+- 运行 `0b6ed222f24e47b2` 识别 8 个模型族、40 项私有资源：六种管道、锅炉和冷却罐。管道 envmaptint 从 0.8 到 0.4、锅炉从 0.5 到 0.25、冷却罐 Phong boost 从 0.1 到 0.05。`tank_large01` 的实际材质不匹配目录，未按模型名字误改；四项无关门框模型的不支持材质路径在 skipped 中报告。
+- 原生烘焙检查通过，compiler_diagnostics 为空；11,578 个 HDR 面、14,079 个 detail props，面拓扑、叶几何及静态物件实例保持。7 处 SKY/SKY2D 标志仍按既有允许规则重算，不能声称全部 lump 字节不变。模型引用变化只在材质准备阶段发生，之后烘焙保持完整 sprp 内容。
+- 自动正常启动、单次采样、重载、退出、回填 37 份 HDR cubemap；最终包经原生解包校验，SHA256 为 `2381af3c706cc83d03c9b8797f4e12324ef7715701e7d78345d63b33d40f478b`。机器状态 final_ready_pending_user_validation；画面是否更自然仍待用户反馈。
+- 最终隔离检查通过：原 141 份 VMT 字节保持、40 份私有资源哈希保持，复制的 VVD/VTX/PHY 与原资源一致，sprp 实例尾部不变；实体、h/l/s、NAV、exclude 与接受的 v3 版本一致。未发现私有资源加载错误，94 项清理收据路径已不存在，启动器 INI 原哈希恢复。未据此宣称游戏日志完全无警告。
+
+本机证据位于 `artifacts/material-policy-20260918/` 和 `runs/material-c4m3-c5m1-01/`。本轮不将目录支持范围扩大为任意材质自动干燥，不宣布 VIS-003 已经由用户接受，也不修改原 C6 白椅 VIS-001 的记录。

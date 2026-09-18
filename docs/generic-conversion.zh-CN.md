@@ -98,3 +98,23 @@ C6M1 v2 最终包已获用户实际观察范围内的接受反馈，但带有已
 保留上游 timer、case、relay、director 和它们的无关输出，不因为控制链连接了闪电就删除整条链。未知粒子、脚本控制和资源目录之外的闪电不自动猜测；覆盖限制仍写入方案。已识别粒子若有脚本、输出、全局状态、被模板/父子关系引用、被保留粒子用作控制点，或调用同时命中保留对象，则拒绝转换并报告，交由后续规则迭代。两个都将删除的粒子之间的控制点引用不阻止转换。
 
 v3 不改变局部灯光、材质高光参数、湿地表材质或几何；“暴雨改晴天”并不等于自动把所有物体换成干燥材质。未来若增加真正的暴雨目标，必须另行定义目标天气策略及规则版本，不能直接沿用本节的无风暴契约。
+
+## 可选静态物件材质反光策略
+
+通用配置可以额外指定 `"material_policy": "catalogued-static-reflections-v1"`；省略或设为 `"preserve"` 保持原有结果，不随晴天预设自动开启。复制 `examples/generic-materials.example.json`，用新的运行目录执行相同的 check/build/auto-capture。材质策略独立于天气规则和预设身份。
+
+首版按实际 MDL 材质引用匹配资源目录，覆盖 `models/props_mill/pipeset32d`、`boiler_01`、`tank_large` 及 `models/props/de_train/de_train_horizontalcoolingtank` 材质；不是按模型名猜材质，也不依据地图、实体名或坐标。仅在平坦的 VertexLitGeneric 定义中，将显式 `$envmaptint`（且 `$envmap` 为 env_cubemap）和显式 `$phongboost`（且 `$phong` 为 1）乘以 0.5。保留贴图、反射掩码、Fresnel、几何、碰撞和普通受光参数。这是有限的反光减弱，不宣称识别所有湿材质、去掉贴图湿痕或修复所有过亮物体。
+
+仅支持本轮已审计的 L4D2 MDL v49 静态模型、VVD v4、DX90 VTX v7 和有匹配 PHY 的模型族；外部动画、模型 include、LOD 材质替换、复杂/代理/不支持的材质结构保留并写入 `preflight.material_policy.skipped`。动态/物理实体的模型、世界刷子材质、未知资源不修改。`material_changes` 记录准确原值/新值，`model_copies` 和 `added_resources` 记录副本及哈希。
+
+模型族与材质副本使用 `models/lmc/<内容标识>/...`、`materials/lmc/<内容标识>/...` 路径，写入转换后 BSP 的 PAK，再整体进入最终 VPK。原模型/材质不覆盖；只替换本图 sprp 字典中的模型路径，实例记录（位置、朝向、skin、碰撞设置等）不变，所有实体和 IO 不变。普通模型资源复制不等于重新制作模型；现有格式支持范围之外不尝试重建。
+
+相对路径机制参考 [Valve studio.h](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/studio.h)；L4D2 v49 的字段布局另以实际模型核对，不把 SDK 的版本号当作 L4D2 格式证明。
+
+## VPK 停用与原图隔离
+
+最终风格内容必须完全随 VPK 装卸。转换不改写游戏原始 BSP、模式 LMP、NAV、模型、材质或 gameinfo；输出目录必须位于游戏/工具安装之外。开启材质策略也不得以永久替换原文件、全局同名材质或修改全局渲染开关实现。
+
+停用本图所有转换 VPK 后，**完全退出并重新启动游戏**，再进入原图；已加载的地图和材质缓存不应被当作即时卸载测试。仍启用的其他同图覆盖包会继续影响实际加载，应一并排除。
+
+构建机的采样临时 BSP、材质别名、脚本/CFG 通过收据清理，启动器临时参数恢复。人工测试 CFG 和日志是独立辅助文件，除非执行它们，否则不会自动加载；采样/测试设置的 HDR、镜面反射和本地调试选项属于游戏会话/用户设置，不能据此宣称任意先前视频偏好已自动恢复。终端玩家加载最终 VPK 不需要执行采样或调试 CFG。

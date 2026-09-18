@@ -1,6 +1,7 @@
 """Configurable offline conversion with manual or automatic native capture."""
 import argparse
 from datetime import datetime
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -124,7 +125,23 @@ def load_run(root):
         snapshot = BspFile.parse((root/'bake/input.bsp.snapshot').read_bytes())
         verify_resource_inventory(result['config']['resource_roots'],
                                   _pak_entries(snapshot.lump_bytes(40)), result['model_resource_inventory'])
+    verify_material_run(result, root)
     return result
+
+
+def verify_material_run(report, root):
+    """Verify original material inputs and bind the opt-in prepared baseline."""
+    cfg=report.get('config',{});audit=report.get('preflight',{}).get('material_policy')
+    policy=cfg.get('material_policy','preserve')
+    if audit is None and policy=='preserve':return
+    if not isinstance(audit,dict) or policy!=audit.get('policy') or policy!='catalogued-static-reflections-v1':
+        raise ValueError('Material policy configuration/audit mismatch')
+    from .model_lighting import verify_resource_inventory
+    from .native import _pak_entries
+    raw=(Path(root)/'bake/input.bsp.snapshot').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=audit['output_sha256']:
+        raise ValueError('Material policy prepared BSP identity mismatch')
+    verify_resource_inventory(cfg['resource_roots'],_pak_entries(BspFile.parse(raw).lump_bytes(40)),audit['source_inventory'])
 
 
 def status_summary(report):
@@ -167,6 +184,10 @@ def check(config_path, *, progress=None):
         output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
         for key, path in cfg['mode_lmps'].items():
             modes[key], mode_audits[key] = transfer_style(path.read_bytes(), preset if preset else cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
+    material_audit=None
+    if cfg.get('material_policy','preserve')!='preserve':
+        from .material_policy import apply_material_policy
+        output,material_audit=apply_material_policy(output,cfg['resource_roots'],policy=cfg['material_policy'])
     # Check concrete new style assets. Complete material dependency closure is
     # not claimed; compiler diagnostics and user loading remain further gates.
     names = ['materials/correction/cc_c5_main.raw', 'materials/sprites/light_glow02_add_noz.vmt']
@@ -194,6 +215,7 @@ def check(config_path, *, progress=None):
             'Only discovered h/l/s index-zero loose entity patches are converted; no missing patches or NAV are generated.',
             'Resource roots are lookup candidates; game mount order must be checked in game.',
             'Generic atmosphere replacement remains bounded by the recorded plan; scripts and runtime visuals require independent testing.'])
+    if material_audit is not None:report['material_policy']=material_audit
     return cfg, report, output, modes
 
 
@@ -235,6 +257,7 @@ def build(config_path):
             vrad_game_dir = compile_dir
         snapshot = compile_dir / 'input.bsp.snapshot'
         snapshot.write_bytes(prepared)
+        verify_material_run(report,root)
         bsp = compile_dir / (name + '.bsp')
         bsp.write_bytes(prepared)
         print('Checking static-prop model versions and snapshotting model resources.', flush=True)
@@ -250,6 +273,7 @@ def build(config_path):
         verify_inventory(report['tracked_outputs'])
         compiled = bsp.read_bytes()
         model_evidence.verify_current()
+        verify_material_run(report,root)
         report['bake_audit'] = audit_bake(
             prepared, compiled, model_evidence=model_evidence,
             allow_leaf_sky_flags=cfg.get('native_mounts') == 'resource_roots')

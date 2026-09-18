@@ -192,7 +192,7 @@ def _load_generic_config(path, value):
         raise ValueError('Generic mode_lmps are discovered from search_dirs')
     allowed = {'conversion', 'preset', 'source_bsp', 'search_dirs', 'nav', 'exclude',
                'game_dir', 'tools_dir', 'output_dir', 'resource_roots', 'native_mounts',
-               'threads', 'timeout_seconds', 'atmosphere_policy'}
+               'threads', 'timeout_seconds', 'atmosphere_policy', 'material_policy'}
     if set(value) - allowed:
         raise ValueError(f'Unknown configuration keys: {sorted(set(value) - allowed)}')
 
@@ -203,6 +203,11 @@ def _load_generic_config(path, value):
 
     cfg = {'conversion': value['conversion'], 'profile': value['conversion'],
            'config_file': path, 'reference_bsp': None, 'reference_lmp': None}
+    if 'material_policy' in value:
+        from .material_policy import POLICIES
+        if value['material_policy'] not in POLICIES:
+            raise ValueError('Unsupported material_policy')
+        cfg['material_policy'] = value['material_policy']
     for key in ('source_bsp', 'game_dir', 'tools_dir', 'output_dir', 'preset'):
         if key not in value:
             raise ValueError(f'Missing configuration key: {key}')
