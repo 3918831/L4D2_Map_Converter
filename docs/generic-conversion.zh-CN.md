@@ -17,7 +17,7 @@ python -m l4d2_bsp.workflow build --config config.generic.local.json
 
 | 配置 | 作用 |
 |---|---|
-| `conversion` | 选择 `generic-replace-v1` 或 `generic-replace-v2`；不与 `source_profile`、旧 `profile`、参考地图或手填 `mode_lmps` 混用 |
+| `conversion` | 选择 `generic-replace-v1`、`generic-replace-v2` 或 `generic-replace-v3`；不与 `source_profile`、旧 `profile`、参考地图或手填 `mode_lmps` 混用 |
 | `source_bsp` | 原始松散 BSP，不应是本工具已经转换的结果 |
 | `preset` | 固定目标参数；无需目标地图 BSP/LMP |
 | `game_dir` / `tools_dir` | 完整测试游戏的 `left4dead2` 和工具包的 `bin`；工具包需独立解压 |
@@ -88,3 +88,13 @@ map c1m1_hotel coop
 C6M1 是此规则扩展的验证输入，并非按其实体名添加的专用分支。基础图及 h/l/s 补丁已通过方案检查；最终游戏验收结果另记于验证记录，不继承旧 C6 专用适配的验收。尤其需复核新娘 Witch 的尸潮流程，以及原天气触发后的晴天是否保持。
 
 C6M1 v2 最终包已获用户实际观察范围内的接受反馈，但带有已知画质限制 VIS-001：婚礼区域部分白椅过亮，Phong 开关对照未明显改善，根因未确定、按用户要求暂缓。不得将这一结论表述为全图无画质问题或全部模式/事件已验收；详情见 [验证记录](validation.md)。
+
+## v3：无风暴预设去除已知闪电
+
+需要去除原图已知闪电时，复制 `examples/generic-v3.example.json`，选择 `generic-replace-v3`，填写实际输入及全新的输出目录。执行相同的 check → build → auto-capture → 人工验收流程。v1/v2 继续保持原规则，不会自动升级；既有运行不能通过修改清单切换规则版本。
+
+当前支持的 C5M1 晴天和 C4M3 静态阴天都是不含风暴的目标。v3 继承 v2，并使用 `weather-assets-v2` 精确识别 `info_particle_system.effect_name` 中的 `storm_cloud_parent`、`storm_lightning_02`、`storm_lightning_screenglow`。这些是效果资源标识，匹配不依赖地图名、实体名、Hammer ID 或坐标。自启动闪光粒子也会移除；指向已识别端点的 Start/Stop 等已知生命周期输出一并处理，避免后续重新启动。
+
+保留上游 timer、case、relay、director 和它们的无关输出，不因为控制链连接了闪电就删除整条链。未知粒子、脚本控制和资源目录之外的闪电不自动猜测；覆盖限制仍写入方案。已识别粒子若有脚本、输出、全局状态、被模板/父子关系引用、被保留粒子用作控制点，或调用同时命中保留对象，则拒绝转换并报告，交由后续规则迭代。两个都将删除的粒子之间的控制点引用不阻止转换。
+
+v3 不改变局部灯光、材质高光参数、湿地表材质或几何；“暴雨改晴天”并不等于自动把所有物体换成干燥材质。未来若增加真正的暴雨目标，必须另行定义目标天气策略及规则版本，不能直接沿用本节的无风暴契约。

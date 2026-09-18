@@ -9,7 +9,7 @@ from .style import _read
 
 
 RULE = 'generic-replace-v1'
-RULES = (RULE, 'generic-replace-v2')
+RULES = (RULE, 'generic-replace-v2', 'generic-replace-v3')
 INIT = '__lmc_style_init_v1'
 CLASS_ROLES = {
     'worldspawn': 'world', 'light_environment': 'environment',
@@ -69,9 +69,9 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     for i, entity in enumerate(entities):
         by_class.setdefault(entity_value(entity, 'classname'), []).append(i)
     weather = None
-    if rule == 'generic-replace-v2':
+    if rule in ('generic-replace-v2', 'generic-replace-v3'):
         from .generic_weather import weather_evidence
-        weather = weather_evidence(entities, graph)
+        weather = weather_evidence(entities, graph, remove_lightning=rule == 'generic-replace-v3')
     operations, removals, additions = {}, set(weather['removed']) if weather else set(), []
     anchor = next((entity_value(e, 'origin') for e in entities
                    if entity_value(e, 'classname') == 'light_environment' and entity_value(e, 'origin')), '0 0 0')
@@ -202,6 +202,13 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
             from .generic_weather import EXTRA_INPUTS
             allowed_extra = weather is not None and all(output['input'].lower() in
                 EXTRA_INPUTS.get(entity_value(entities[j], 'classname'), set()) for j in targets)
+            if rule == 'generic-replace-v3':
+                from .generic_weather import PARTICLE_INPUTS
+                particle_targets = [j for j in targets if entity_value(entities[j], 'classname') == 'info_particle_system']
+                if particle_targets:
+                    if output['input'].lower() not in PARTICLE_INPUTS:
+                        raise ValueError(f'Unknown input to weather particle requires review: {i}/{output["input"]}')
+                    allowed_extra = all(j in weather['removed'] for j in targets) and len(particle_targets) == len(targets)
             if output['input'].lower() not in VISUAL_INPUTS and not allowed_extra and not extra_reason:
                 raise ValueError(f'Unknown input to visual entity requires review: {i}/{output["input"]}')
             if any(o['entity_index'] in visual_targets for o in graph['outputs']):
@@ -219,7 +226,9 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     removed_names = {(entity_value(entities[i], 'targetname') or '').lower() for i in affected} - {''}
     for i, entity in enumerate(entities):
         for pair in entity.pairs:
-            if (pair.key.lower().startswith('template') or pair.key.lower() in ('parentname', 'target')):
+            if (pair.key.lower().startswith('template') or pair.key.lower() in ('parentname', 'target')
+                    or (rule == 'generic-replace-v3' and i not in removals
+                        and re.fullmatch(r'cpoint[0-9]+', pair.key.lower()))):
                 target = pair.value.split(',', 1)[0].lower()
                 if target in removed_names or ('*' in target and any(n.startswith(target.split('*', 1)[0]) for n in removed_names)):
                     raise ValueError(f'Reference to removed visual entity requires review: {i}/{pair.key}')

@@ -71,9 +71,9 @@ def run_capture_tonemap(report):
     generic_marker = any(isinstance(value, str) and value.startswith('generic-replace-') for value in identities)
     if (cfg.get('conversion') is not None or generic_marker) and cfg.get('conversion') not in GENERIC_CONVERSIONS:
         raise ValueError('Missing or unsupported generic conversion rule; use a new run')
-    if 'generic-replace-v2' in identities and (
-            cfg.get('conversion') != 'generic-replace-v2' or cfg.get('profile') != 'generic-replace-v2'
-            or any(isinstance(value, str) and value.startswith('generic-replace-') and value != 'generic-replace-v2'
+    if any(value in ('generic-replace-v2', 'generic-replace-v3') for value in identities) and (
+            cfg.get('profile') != cfg.get('conversion')
+            or any(isinstance(value, str) and value.startswith('generic-replace-') and value != cfg.get('conversion')
                    for value in identities)):
         raise ValueError('Generic conversion rule identity mismatch; use a new run')
     if cfg.get('conversion') not in GENERIC_CONVERSIONS:
@@ -87,7 +87,7 @@ def run_capture_tonemap(report):
         raise ValueError('Generic mode audit/config/discovery inventory mismatch; use a new run')
 
     def capture_name(audit):
-        if cfg.get('conversion') == 'generic-replace-v2' and (
+        if cfg.get('conversion') in ('generic-replace-v2', 'generic-replace-v3') and (
                 not isinstance(audit, dict) or not isinstance(audit.get('plan'), dict)
                 or audit['plan'].get('conversion') != cfg['conversion']
                 or audit.get('conversion') != cfg['conversion']):

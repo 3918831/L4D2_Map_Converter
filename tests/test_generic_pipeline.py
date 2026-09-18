@@ -12,6 +12,31 @@ def capture_audit(name='__lmc_tonemap_v1', **plan):
 
 
 class GenericConfigurationTests(unittest.TestCase):
+    def test_v3_pipeline_removes_lightning_and_rejects_rule_downgrade(self):
+        import copy
+        from l4d2_bsp.workflow import check, run_capture_tonemap
+        from l4d2_bsp.style import _read
+        self.value['conversion'] = 'generic-replace-v3'
+        text = (entity('worldspawn', skyname='old') +
+                entity('info_particle_system', effect_name='storm_cloud_parent', start_active='1') + b'\0')
+        self.file('input/custom-map.bsp', wrap(text))
+        self.file('input/custom-map_l_0.lmp', wrap(text, 'lmp'))
+        self.load()
+        with patch('l4d2_bsp.resources.lookup_resources', return_value={'resources': {}}):
+            cfg, report, output, modes = check(self.config)
+        self.assertNotIn(b'storm_cloud_parent', _read(output, 'bsp')[1])
+        self.assertNotIn(b'storm_cloud_parent', _read(modes['l'], 'lmp')[1])
+        run = {'config': cfg, 'preflight': report}
+        self.assertEqual(run_capture_tonemap(run), '__lmc_tonemap_v1')
+        for rule in ('generic-replace-v1', 'generic-replace-v2', None):
+            changed = copy.deepcopy(run)
+            changed['config']['conversion'] = rule
+            with self.subTest(rule=rule), self.assertRaisesRegex(ValueError, 'rule|conversion'):
+                run_capture_tonemap(changed)
+        report['mode_styles']['l']['plan']['conversion'] = 'generic-replace-v2'
+        with self.assertRaisesRegex(ValueError, 'rule|conversion'):
+            run_capture_tonemap(run)
+
     def test_v2_selection_is_recorded_in_base_and_mode_plans(self):
         from l4d2_bsp.workflow import check, run_capture_tonemap
         self.value['conversion'] = 'generic-replace-v2'

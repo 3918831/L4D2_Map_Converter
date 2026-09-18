@@ -23,9 +23,13 @@ THUNDER_SOUNDS = {'weather.thunder_close_all_4'}
 CONTEXT_SOUNDS = {'hospital.helicopterwindloop', 'ambient/wind/windgust_strong.wav'}
 CONTEXT_MIXERS = {'stormlayer', 'voiplayer'}
 WIND_CALM = {'minwind': '0', 'maxwind': '0', 'mingust': '0', 'maxgust': '0'}
+# Exact particle resource identities, never entity names or map provenance.
+# The current generic replacement contract targets dry, non-storm presets.
+LIGHTNING_PARTICLES = {'storm_cloud_parent', 'storm_lightning_02', 'storm_lightning_screenglow'}
+PARTICLE_INPUTS = {'start', 'stop', 'stopplayendcap', 'destroyimmediately', 'kill'}
 
 
-def weather_evidence(entities, graph):
+def weather_evidence(entities, graph, *, remove_lightning=False):
     classes = [entity_value(e, 'classname') for e in entities]
     outgoing, incoming = defaultdict(list), defaultdict(list)
     for o in graph['outputs']:
@@ -67,6 +71,14 @@ def weather_evidence(entities, graph):
 
     removed = set(thunder)
     ownership = {i: 'catalogued_thunder_sound' for i in thunder}
+    if remove_lightning:
+        for i, e in enumerate(entities):
+            if (classes[i] == 'info_particle_system' and
+                    (entity_value(e, 'effect_name') or '').lower() in LIGHTNING_PARTICLES):
+                removed.add(i)
+                ownership[i] = 'catalogued_lightning_particle'
+        # Do not propagate weather context from particles into shared upstream
+        # controllers: remove their direct writers only, retain scheduling/IO.
     for i, e in enumerate(entities):
         cls = classes[i]
         contextual = ((cls == 'ambient_generic' and
@@ -109,7 +121,7 @@ def weather_evidence(entities, graph):
             if any(scripted(j) or outgoing[j] for j in o['candidate_targets']):
                 raise ValueError('Weather edge target has script or outputs requiring review')
     return dict(removed=removed, cuts=cuts, audit={
-        'resource_catalog': 'weather-assets-v1',
+        'resource_catalog': 'weather-assets-v2' if remove_lightning else 'weather-assets-v1',
         'owned_endpoints': [dict(entity_index=i, reason=ownership[i]) for i in sorted(removed)],
         'weather_events': [dict(entity_index=i, output=key, reason=reasons[i, key]) for i, key in sorted(events)],
         'unresolved_weather_outputs': [dict(entity_index=o['entity_index'], output=o['output'],
