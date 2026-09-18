@@ -1,6 +1,6 @@
 # C10M3 夜晚预设
 
-预设 ID `c10m3-night-v1`，schema 3，使用通用 `generic-replace-v3` 入口。提取参考图 `c10m3_ranchhouse` 的常态夜间环境；首个验证输入为原始 C2M1。机器构建和人工状态见 [验证记录](validation.md)，不能将参数提取当作实机验收。
+预设 ID `c10m3-night-v1`，schema 3，使用通用 `generic-replace-v3` 入口。提取参考图 `c10m3_ranchhouse` 的常态夜间环境；首个原始 C2M1 输入已完成独立工具包构建、自动反射采样、最终审计和部署，等待用户画面复核。详情见 [验证记录](validation.md)，不能将机器流程完成当作实机验收。
 
 ## 参数来源与选择
 
