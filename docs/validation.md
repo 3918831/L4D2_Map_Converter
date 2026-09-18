@@ -370,3 +370,22 @@ python -m l4d2_bsp.workflow check --config config.local.json
 部署前确认游戏关闭、没有其他 C2 覆盖冲突，将旧 C2→C4 VPK 可逆改名为 `.vpk.disabled-before-c7m1`，新增本轮 VPK 及 `lmc_c2_c7_validate` / `lmc_c2_c7_info` CFG，安装文件与备份哈希复核通过；原图和其他插件保持。此步骤是本次测试辅助部署，不代表 batch-run 新增自动最终部署功能。
 
 本机证据在 `artifacts/c2-c7m1-20260918/`：`provenance.json`、`input-origin-check.json`、`machine-verification.json`、`validation-deployment.json` 和 `manual-validation.zh-CN.md`。人工检查采用熟悉的赛车/卡车机位及其他室外、室内、遮阴区域，建议截图 `C2M1-C7M1-stage-final.png`。截至本记录尚未收到本轮画面反馈，不将 C2→C7 列为人工验收通过。
+
+### C2M1→C7M1 人工接受与成品保留
+
+2026-09-18 用户反馈“不错，没有什么异常”，提供 `C2M1-C7M1-stage-final.png`。截图为汽车旅馆附近视角，已实际查看并连同哈希及包身份归档到 `runs/c2m1-c7m1-v3-01/manual-validation/feedback-20260918-accepted/`。记录为用户实际观察范围接受，不扩大为全部路线、游戏模式或感染者视角通过。
+
+按用户要求保留已烘焙包供后续场景演示录制。本机 `artifacts/vpk-library/` 另存现有运行的 offline/final VPK，当前包含 31 份、总计 1,090,697,573 字节；每份来源与归档副本 SHA256 匹配，没有缺失或哈希不符。原 runs 输出不删除。目录内 `index.json` / `README.zh-CN.md` 区分输入、预设、阶段、材质策略和对应人工反馈，并保存运行/预设快照及匹配包哈希的反馈附件。该数量包括本轮 C4M3 新包；旧实验或待验收包不会因归档自动算作成功验收。此为本地录制资料库，不将生成的游戏资源提交到源码仓库；录制成品优先 final，offline 可作反射更新前的阶段示意，同图包不能同时启用。
+
+### C4M3→C7M1：第二个输入完成机器流程
+
+同日按用户指定，用原始 `c4m3_sugarmill_b` 应用同一 C7M1 预设，运行 `8c230549caa14c9f`，目录 `runs/c4m3-c7m1-v3-01`。重新解压与上一轮相同的独立代码/原生工具包执行，规则 generic-replace-v3，材质 preserve，未更改转换算法。输入 SHA256 `8d482d83e6639fc4d024a89b4d4b988eeaa1ae44d1947221a07dd9d7a7172462` 与先前 C4M3 测试的原始输入一致，并非旧材质实验包。
+
+- 基础图及 h/l/s 受保护实体与 IO 检查通过，受保护 IO 分别 229/223/229/229 条；最终四个容器的角色参数、曝光/Bloom 初始化和无额外方向光均与预设一致。
+- 通用天气目录识别 15 个闪电粒子、1 个雷声端点及 4 个由独占天气写入者控制的资源端点并处理。仍报告 3 条未解析天气输出引用（sound_thunder2、timer_storm_blendin、timer_storm_blendout）；不凭名字猜测实体所有权，不把已识别天气处理声称为任意脚本天气已穷尽。
+- 完成 11,578 个 HDR 面和 14,079 个 detail props。VRAD 改变 7 个叶节点的 SKY/SKY2D 标志，因此原始报告 `protected_lumps_unchanged=false`；严格审计确认叶 lump 仅这些允许的位变化，叶几何、面拓扑、sprp 和 detail 布置保持。不能把此结果写成所有受保护 lump 字节完全不变。compiler_diagnostics 为空。
+- 单次自动采样、重载和正常退出，37 份 HDR cubemap 全部更新，RGB 有限且本轮没有非有限 alpha 文件；非 PAK 内容及采样坐标记录保持，LDR/default 保留。95 项临时路径清理完成，启动器 INI 原哈希恢复。141 份原始内嵌 VMT、所选 NAV/exclude 字节保持。
+
+最终包八个条目经原生解包及哈希检查，SHA256 `3c3f1278983902dc5264b7908339aa4c38332b75bcf72b5f031f7014c17b3217`。先确认游戏关闭与覆盖冲突，再可逆停用旧 C4 材质实验包 `0b6ed222f24e47b2`，部署新 VPK 和 `lmc_c4_c7_validate` / `lmc_c4_c7_info`，安装文件及旧备份哈希复核通过。C2→C7 包及其他不同地图插件保持。
+
+证据、部署收据及步骤在 `artifacts/c4-c7m1-20260918/`；截图建议 `C4M3-C7M1-stage-final.png`。目前机器状态 final_ready_pending_user_validation，等待用户观察天气、材质、受光和实际游玩。C7M1 预设已有 C2M1 人工通过，按用户计划在本轮 C4M3 反馈后再确认第二样本阶段成果。原材质光泽 VIS-003 保持暂缓，不因本轮天气覆盖而宣称解决。
