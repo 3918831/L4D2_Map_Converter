@@ -1,0 +1,192 @@
+{
+  "schema_version": 3,
+  "id": "c7m1-hazy-static-v1",
+  "supported_sources": [],
+  "atmosphere_policy": "replace",
+  "roles": {
+    "world": {
+      "skyname": "river_hdr"
+    },
+    "environment": {
+      "_light": "185 157 115 60",
+      "_ambient": "133 152 167 15",
+      "_lightHDR": "-1 -1 -1 1",
+      "_ambientHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_AmbientScaleHDR": "1",
+      "angles": "0 18 0",
+      "pitch": "-15",
+      "SunSpreadAngle": "1"
+    },
+    "directional": null,
+    "shadow": {
+      "color": "92 92 92",
+      "angles": "50 18 0",
+      "distance": "70",
+      "disableallshadows": "0",
+      "enableshadowsfromlocallights": "1"
+    },
+    "fog_outdoor": {
+      "fogcolor": "33 43 50",
+      "fogcolor2": "255 255 255",
+      "fogstart": "256",
+      "fogend": "2500",
+      "fogmaxdensity": "1",
+      "foglerptime": "4",
+      "HDRColorScale": "1",
+      "farz": "2500",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "1",
+      "angles": "0 149 0",
+      "heightFogStart": "0",
+      "heightFogMaxDensity": "1",
+      "heightFogDensity": "0"
+    },
+    "fog_interior": {
+      "fogcolor": "33 43 50",
+      "fogcolor2": "255 255 255",
+      "fogstart": "256",
+      "fogend": "2500",
+      "fogmaxdensity": "1",
+      "foglerptime": "4",
+      "HDRColorScale": "1",
+      "farz": "2500",
+      "fogenable": "1",
+      "fogblend": "0",
+      "fogdir": "1 0 0",
+      "use_angles": "1",
+      "angles": "0 133 0",
+      "heightFogStart": "0",
+      "heightFogMaxDensity": "1",
+      "heightFogDensity": "0"
+    },
+    "sky": {
+      "fogcolor": "33 43 50",
+      "fogcolor2": "255 255 255",
+      "fogstart": "128",
+      "fogend": "2000",
+      "fogmaxdensity": "1",
+      "HDRColorScale": "1",
+      "fogenable": "1",
+      "fogdir": "1 0 0"
+    },
+    "color_main": {
+      "filename": "materials/correction/docks.raw"
+    },
+    "color_intro": {
+      "filename": "materials/correction/docks.raw"
+    },
+    "sun": {
+      "use_angles": "1",
+      "angles": "0 14 0",
+      "pitch": "-16",
+      "size": "64",
+      "rendercolor": "51 51 51",
+      "overlaysize": "96",
+      "overlaymaterial": "sprites/light_glow02_add_noz_docks",
+      "overlaycolor": "0 0 0",
+      "material": "sprites/light_glow02_add_noz_docks",
+      "HDRColorScale": ".075"
+    },
+    "postprocess_exterior": {
+      "vignettestart": ".8",
+      "vignetteend": "1.1",
+      "vignetteblurstrength": "0",
+      "topvignettestrength": "1",
+      "localcontraststrength": ".5",
+      "localcontrastedgestrength": "0",
+      "grainstrength": "1",
+      "fadetoblackstrength": "0",
+      "fadetime": "2"
+    },
+    "color_checkpoint": {
+      "filename": "materials/correction/docks_interiors.raw"
+    }
+  },
+  "exposure": {
+    "survivor": {
+      "minimum": ".25",
+      "maximum": "9",
+      "bright_pixels": null,
+      "rate": null,
+      "bloom_scale": "0",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    },
+    "infected": {
+      "minimum": ".25",
+      "maximum": "3",
+      "bright_pixels": null,
+      "rate": null,
+      "bloom_scale": "1",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    },
+    "ghost": {
+      "minimum": ".25",
+      "maximum": "3",
+      "bright_pixels": null,
+      "rate": null,
+      "bloom_scale": "1",
+      "bloom_exponent": "2",
+      "bloom_saturation": "1"
+    }
+  },
+  "wind": {
+    "windradius": "-1",
+    "minwind": "15",
+    "mingustdelay": "15",
+    "mingust": "50",
+    "maxwind": "30",
+    "maxgustdelay": "30",
+    "maxgust": "100",
+    "gustduration": "5",
+    "gustdirchange": "20",
+    "angles": "0 -180 0"
+  },
+  "resources": {
+    "common": [
+      "materials/correction/docks.raw",
+      "materials/correction/docks_interiors.raw",
+      "materials/skybox/river_hdrbk.vmt",
+      "materials/skybox/river_hdrdn.vmt",
+      "materials/skybox/river_hdrft.vmt",
+      "materials/skybox/river_hdrlf.vmt",
+      "materials/skybox/river_hdrrt.vmt",
+      "materials/skybox/river_hdrup.vmt",
+      "materials/sprites/light_glow02_add_noz_docks.vmt"
+    ],
+    "clear": [
+      "sound/ambient/atmosphere/crucial_quiet_cellblock_amb.wav",
+      "sound/ambient/atmosphere/crucial_town_ambience.wav"
+    ]
+  },
+  "soundscapes": {
+    "outdoor": "lmc_c7m1_hazy_v1.outdoor",
+    "indoor": "lmc_c7m1_hazy_v1.indoor"
+  },
+  "soundscape_definition": {
+    "outdoor": {
+      "dsp": "1",
+      "loops": [
+        {
+          "wave": "ambient/atmosphere/crucial_town_ambience.wav",
+          "volume": "0.8",
+          "pitch": "100"
+        }
+      ]
+    },
+    "indoor": {
+      "dsp": "1",
+      "loops": [
+        {
+          "wave": "ambient/atmosphere/crucial_quiet_cellblock_amb.wav",
+          "volume": "0.65",
+          "pitch": "100"
+        }
+      ]
+    }
+  }
+}

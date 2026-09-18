@@ -105,7 +105,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
             raise ValueError(f'Visual controller script requires review: {i}/{cls}')
         if cls in CLASS_ROLES:
             values = preset.role_values(CLASS_ROLES[cls])
-            if cls == 'env_sun' and values is None:
+            if cls in ('env_sun', 'light_directional') and values is None:
                 removals.add(i)
                 continue
             change(i, values)
@@ -152,7 +152,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     if not by_class.get('env_wind') and preset.wind_values is not None:
         add('env_wind', preset.wind_values)
 
-    # Every exposure controller receives the same preset. Select a unique
+    # Each player-role class receives its preset values. Select a unique
     # normal-player controller for the capture guard, independent of its name.
     capture_name, exposure_names = None, []
     for cls in EXPOSURES:
@@ -234,14 +234,9 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
                     raise ValueError(f'Reference to removed visual entity requires review: {i}/{pair.key}')
 
     startup = [('classname', 'logic_auto'), ('targetname', INIT), ('spawnflags', '1')]
-    exposure = preset.exposure_values
     for cls, name in exposure_names:
-        actions = [('SetAutoExposureMin', 'minimum'), ('SetAutoExposureMax', 'maximum')]
-        if cls == EXPOSURES[0]:
-            actions += [('SetTonemapRate', 'rate'), ('SetTonemapPercentBrightPixels', 'bright_pixels')]
-        for action, field in actions:
-            if exposure[field] is not None:
-                startup.append(('OnMapSpawn', '\x1b'.join((name, action, exposure[field], '0', '-1'))))
+        for action, value in preset.tonemap_inputs(cls):
+            startup.append(('OnMapSpawn', '\x1b'.join((name, action, value, '0', '-1'))))
     additions.append(startup)
     if graph['script_entrypoints']:
         warnings.append('Source scripts retained; external/dynamic atmosphere writers are not statically proven absent.')

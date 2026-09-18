@@ -16,7 +16,13 @@ from .patch import _validate_value
 
 
 PRESET_ID = 'c5m1-daylight-v1'
-_BUILTINS = {PRESET_ID: 1, 'c4m3-overcast-static-v1': 2}
+_BUILTINS = {PRESET_ID: 1, 'c4m3-overcast-static-v1': 2, 'c7m1-hazy-static-v1': 3}
+_TONEMAP_ROLES = {'env_tonemap_controller': 'survivor',
+    'env_tonemap_controller_infected': 'infected', 'env_tonemap_controller_ghost': 'ghost'}
+_TONEMAP_ACTIONS = (('SetAutoExposureMin', 'minimum'), ('SetAutoExposureMax', 'maximum'),
+    ('SetTonemapRate', 'rate'), ('SetTonemapPercentBrightPixels', 'bright_pixels'),
+    ('SetBloomScale', 'bloom_scale'), ('SetBloomExponent', 'bloom_exponent'),
+    ('SetBloomSaturation', 'bloom_saturation'))
 _FOG = ('fogcolor', 'fogcolor2', 'fogstart', 'fogend', 'fogmaxdensity',
         'foglerptime', 'HDRColorScale', 'farz')
 _ROLES = {
@@ -113,6 +119,7 @@ class StylePreset:
     _exposure_data: tuple = ()
     _wind_data: tuple | None = None
     _soundscape_json: str | None = None
+    _tonemap_data: tuple = ()
 
     def role_values(self, name):
         """Return a detached semantic role, never donor identity or geometry."""
@@ -122,6 +129,18 @@ class StylePreset:
     @property
     def exposure_values(self):
         return dict(self._exposure_data)
+
+    def tonemap_inputs(self, classname):
+        """Return bounded initialization inputs by player role, not target name."""
+        if classname not in _TONEMAP_ROLES:
+            raise ValueError('Unsupported tonemap controller class')
+        if self._tonemap_data:
+            values = dict(dict(self._tonemap_data)[_TONEMAP_ROLES[classname]])
+            actions = _TONEMAP_ACTIONS
+        else:
+            values = self.exposure_values
+            actions = _TONEMAP_ACTIONS[:4 if classname == 'env_tonemap_controller' else 2]
+        return [(action, values[field]) for action, field in actions if values[field] is not None]
 
     @property
     def wind_values(self):
@@ -159,8 +178,8 @@ def parse_preset(data: bytes, *, source_path=None) -> StylePreset:
         document = json.loads(data.decode('utf-8'), object_pairs_hook=_object)
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError('Invalid preset JSON') from exc
-    if type(document) is dict and type(document.get('schema_version')) is int and document['schema_version'] == 2:
-        return _parse_v2(document, data, source_path)
+    if type(document) is dict and type(document.get('schema_version')) is int and document['schema_version'] in (2, 3):
+        return _parse_modern(document, data, source_path)
     _keys(document, ('schema_version', 'id', 'roles', 'exposure', 'resources', 'soundscapes'), 'root')
     if type(document['schema_version']) is not int or document['schema_version'] != 1:
         raise ValueError('Unsupported preset schema version')
@@ -292,14 +311,31 @@ def _resource_paths(paths):
             raise ValueError(f'Unsupported preset resource path: {path}')
 
 
-def _parse_v2(document, data, source_path):
+def _parse_role_exposures(value):
+    _keys(value, ('survivor', 'infected', 'ghost'), 'exposure roles')
+    for role, fields in value.items():
+        _keys(fields, [field for _, field in _TONEMAP_ACTIONS], 'exposure ' + role)
+        for key, number in fields.items():
+            if number is None and key in ('rate', 'bright_pixels'):
+                continue  # Donor has no explicit override; never borrow another preset's value.
+            _visual_value('exposure', number)
+            lower = 0 if key.startswith('bloom_') else 0.000001
+            if not lower <= float(number) <= 100:
+                raise ValueError('Preset role exposure outside bounds')
+        if float(fields['minimum']) > float(fields['maximum']):
+            raise ValueError('Preset role exposure minimum exceeds maximum')
+    return value
+
+
+def _parse_modern(document, data, source_path):
     from .soundscapes import validate_soundscape_definitions
 
     _keys(document, ('schema_version', 'id', 'supported_sources', 'atmosphere_policy',
         'roles', 'exposure', 'wind', 'resources', 'soundscapes', 'soundscape_definition'), 'root')
-    if type(document['id']) is not str or _BUILTINS.get(document['id']) != 2:
+    version = document['schema_version']
+    if type(document['id']) is not str or _BUILTINS.get(document['id']) != version:
         raise ValueError('Unsupported preset identity')
-    if document['supported_sources'] != ['c2m1_highway']:
+    if document['supported_sources'] != ([] if version == 3 else ['c2m1_highway']):
         raise ValueError('Unsupported preset source capabilities')
     if document['atmosphere_policy'] != 'replace':
         raise ValueError('Schema 2 requires full atmosphere replacement')
@@ -308,7 +344,7 @@ def _parse_v2(document, data, source_path):
     entities = []
     for role, (classname, name, fields) in _ROLES_V2.items():
         values = roles[role]
-        if role == 'sun' and values is None:
+        if values is None and (role == 'sun' or (version == 3 and role == 'directional')):
             continue
         _keys(values, fields, role)
         pairs = [('classname', classname)]
@@ -317,23 +353,34 @@ def _parse_v2(document, data, source_path):
         if role in ('fog_outdoor', 'fog_interior'):
             pairs.append(('spawnflags', '1' if role == 'fog_outdoor' else '0'))
         for key, value in values.items():
-            _visual_value_v2(key, value)
+            if version == 3 and key in ('material', 'overlaymaterial'):
+                if type(value) is not str or not re.fullmatch(r'sprites/[a-zA-Z0-9_]+', value):
+                    raise ValueError('Unsupported preset sun material path')
+            else:
+                _visual_value_v2(key, value)
             pairs.append((key, value))
         entities.append(_entity(pairs))
-    exposure = document['exposure']
-    _keys(exposure, ('minimum', 'maximum', 'bright_pixels', 'rate'), 'exposure')
-    for key, value in exposure.items():
-        if key == 'bright_pixels' and value is None:
-            continue
-        _visual_value('exposure', value)
-        if not 0 < float(value) <= 100:
-            raise ValueError('Preset exposure outside bounds')
-    if float(exposure['minimum']) > float(exposure['maximum']):
-        raise ValueError('Preset exposure minimum exceeds maximum')
+    role_exposures = _parse_role_exposures(document['exposure']) if version == 3 else None
+    exposure = role_exposures['survivor'] if role_exposures else document['exposure']
+    if version == 2:
+        _keys(exposure, ('minimum', 'maximum', 'bright_pixels', 'rate'), 'exposure')
+        for key, value in exposure.items():
+            if key == 'bright_pixels' and value is None:
+                continue
+            _visual_value('exposure', value)
+            if not 0 < float(value) <= 100:
+                raise ValueError('Preset exposure outside bounds')
+        if float(exposure['minimum']) > float(exposure['maximum']):
+            raise ValueError('Preset exposure minimum exceeds maximum')
     outputs = []
     for suffix in ('_infected', '_ghost', ''):
         target = 'tonemap_global' + suffix
         entities.append(_entity([('classname', 'env_tonemap_controller' + suffix), ('targetname', target)]))
+        if role_exposures is not None:
+            values = role_exposures[_TONEMAP_ROLES['env_tonemap_controller' + suffix]]
+            outputs.extend(('OnMapSpawn', '\x1b'.join((target, action, values[field], '0', '-1')))
+                           for action, field in _TONEMAP_ACTIONS if values[field] is not None)
+            continue
         actions = [('SetAutoExposureMin', 'minimum'), ('SetAutoExposureMax', 'maximum')]
         if not suffix:
             actions = [('SetTonemapRate', 'rate')] + actions
@@ -376,8 +423,9 @@ def _parse_v2(document, data, source_path):
     return StylePreset(document['id'], hashlib.sha256(data).hexdigest(),
         Path(source_path).resolve() if source_path is not None else None,
         tuple(entities), float(exposure['maximum']), tuple(resources['common']),
-        tuple(resources['clear']), tuple(soundscapes.items()), schema_version=2,
+        tuple(resources['clear']), tuple(soundscapes.items()), schema_version=version,
         supported_sources=tuple(document['supported_sources']), atmosphere_policy=document['atmosphere_policy'],
         _role_data=tuple((role, tuple(values.items()) if values is not None else None) for role, values in roles.items()),
         _exposure_data=tuple(exposure.items()), _wind_data=tuple(wind.items()) if wind is not None else None,
-        _soundscape_json=json.dumps(definitions))
+        _soundscape_json=json.dumps(definitions),
+        _tonemap_data=tuple((role, tuple(values.items())) for role, values in role_exposures.items()) if role_exposures else ())

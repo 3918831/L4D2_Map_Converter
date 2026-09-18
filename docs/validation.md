@@ -336,3 +336,20 @@ python -m l4d2_bsp.workflow check --config config.local.json
 机器证据 `artifacts/sample-expansion-20260918/c5-machine-verification.json`，状态 final_ready_pending_user_validation。本项机器端到端已完成，但尚未收到 C5M1 的人工画面/路线反馈；因此不能将本输入加入已人工验收清单。C13M1 的 MODEL-001 和材质 VIS-003 仍保留，未修改算法以隐藏这些边界。
 
 最终部署前再次检查游戏关闭、同图覆盖冲突及目标路径不存在，新增一份 C5M1 VPK 和 `lmc_sample_c5_validate` / `lmc_sample_c5_info` 两个手动 CFG；安装后哈希复核通过，原 C4/C7 包及其他插件保持。收据为 `c5-validation-deployment.json`，具体人工步骤为同目录 `manual-c5-validation.zh-CN.md`。此部署是本次测试辅助操作，不代表 batch-run 已新增自动最终部署功能。
+
+### C5M1→C4M3 人工接受
+
+2026-09-18 用户确认“没有问题，本轮可以验收成功”。将上述最终包记录为实际观察范围内接受，反馈与包 SHA256 绑定在 `runs/sample-c5m1-c4m3-v3-01/manual-validation/feedback-20260918-accepted/acceptance.json`。本轮反馈未附新截图，不虚构截图证据，也不扩大为全战役、全部模式或其他输入通过。
+
+## C7M1 目标预设：提取与离线准备（2026-09-18）
+
+用户随后指定下一个目标 C7M1，先提取预设和说明通用方案，再选择输入地图实测。新增 `c7m1-hazy-static-v1`，schema 3，内容 SHA256 `69580cc6cf0237dbd63ddbabbe7bfe9a72db79625c2172c2cf2f644f8568da7f`。完整参数、排除项及使用方法见 [C7M1 说明](c7m1-preset.zh-CN.md)。
+
+- 原始 C7M1 基础图及 h/l/s 的 24 个氛围角色参数一致（排除身份/位置字段），17 条本次筛选出的相关输出也一致；其中固定曝光/Bloom 来自 logic_auto 初始化。选常态室外，不采用坦克/窑炉/开局局部效果。脚本入口仅记录，不声称解释了任意运行时脚本。
+- 通用能力扩展：schema 3 支持空的额外方向光、按玩家角色区分的曝光/Bloom 和受限太阳材质路径。转换分支不依赖 C7 地图名、实体名或坐标，方向光删除沿用玩法/生命周期保护；guard 使用幸存者 max 9。旧预设 JSON 保持，旧 source_profile 入口不接受 C7。
+- 11 项直接资源与已观察的 7 个 PC 天空/太阳纹理依赖均可读取并记录来源/哈希。环境音只选非定位底噪；不导入 Valve 关卡脚本、音频或纹理到源码。该资源检查不是任意输入地图完整依赖闭包证明。
+- 8 项真实地图预检查：C1M1、C2M1、C3M1、C4M3、C6M1、C7M1、C13M1 通过，C8M1 仍因 `Mixed visual/nonvisual output target: 298/6` 拒绝。7 项通过均保留 8 条覆盖警告；C13M1 既有 MODEL-001 烘焙限制仍然存在。预检查没有生成这些地图的运行目录、BSP 或 VPK。
+- 旧 C5M1/C4M3 在这 8 张输入的实际基础及现存 h/l/s 容器上，对照改动前独立源码：54 组结果一致，其中 48 组输出逐字节相同、6 组拒绝一致。独立代码复核另确认合成 BSP/LMP 在通用规则 v1/v2/v3 下的旧输出及报告一致，并检查方向光删除的输出、全局生命周期、模板和父子保护，没有待修发现。
+- 完整回归 392 项：389 通过，3 项 Windows 符号链接权限跳过。新增角色曝光、缺失方向光保护、schema 非法值、资源/发行包和采样 guard 测试；发布包在独立目录解压后再跑相关 26 项，25 通过、1 项权限跳过。独立包 SHA256 `f2f5b45b6c948e2d7e27e4918feeb6fe37917ff58bd7e8376b046cc9e9a3b3d5`，后补本段文档不改变测试代码。
+
+本机证据在 `artifacts/c7m1-preset-20260918/`。本轮没有 VRAD 构建、游戏采样或部署新 C7 风格地图，没有 C7 目标的人工效果结论；下一轮建议使用原始 C2M1，便于对照已有 C5M1/C4M3 结果。合作模式验收不能代替感染者／ghost 视角验证。

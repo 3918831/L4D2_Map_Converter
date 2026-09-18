@@ -8,12 +8,14 @@ import zipfile
 PUBLIC_FILES = ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                 'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
                 'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md',
+                'docs/c7m1-preset.zh-CN.md',
                 'docs/auto-capture.zh-CN.md',
                 'docs/native-tools.zh-CN.md',
                 'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
                 'docs/generic-conversion.zh-CN.md', 'docs/batch-testing.zh-CN.md',
                 'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
-                'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json')
+                'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
+                'l4d2_bsp/preset_data/c7m1-hazy-static-v1.json')
 
 
 def build_release(root, output):

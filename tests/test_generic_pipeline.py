@@ -236,7 +236,7 @@ class GenericConfigurationTests(unittest.TestCase):
         from l4d2_bsp.binary import BspFile, LumpFile
         from l4d2_bsp.workflow import check
         self.file('input/custom-map_l_0.lmp', wrap(entity('worldspawn', skyname='old') + b'\0', 'lmp'))
-        for preset in ('c5m1-daylight-v1', 'c4m3-overcast-static-v1'):
+        for preset in ('c5m1-daylight-v1', 'c4m3-overcast-static-v1', 'c7m1-hazy-static-v1'):
             self.value['preset'] = preset
             self.load()
             with patch('l4d2_bsp.resources.lookup_resources', return_value={'resources': {}}):

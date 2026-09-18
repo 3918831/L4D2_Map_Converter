@@ -69,3 +69,18 @@ class AtmosphereHandoffTests(unittest.TestCase):
             finish(self.root,captured,log)
         self.assertEqual(packages[0][self.script_name],self.script)
         self.assertIn(self.preset.id.encode(),packages[0]['addoninfo.txt'])
+
+    def test_role_specific_preset_capture_uses_survivor_maximum(self):
+        preset = load_preset('c7m1-hazy-static-v1')
+        snapshot = self.root / 'preset.json'
+        snapshot.write_bytes(preset.source_path.read_bytes())
+        self.report['preset'] = preset.metadata() | {'snapshot_path': str(snapshot)}
+        self.report['config']['preset'] = preset.id
+        self.save()
+        with patch('l4d2_bsp.reflections.prepare_capture', return_value=({}, {})):
+            result = prepare(self.root)
+        scripts = b'\n'.join(p.read_bytes() for p in (self.root/'capture/scripts/vscripts').glob('*'))
+        self.assertIn(b'maximum != 9', scripts)
+        self.assertNotIn(b'maximum != 3', scripts)
+        sound = self.root/f'capture/scripts/soundscapes_{result["capture_alias"]}.txt'
+        self.assertIn(b'lmc_c7m1_hazy_v1.outdoor', sound.read_bytes())

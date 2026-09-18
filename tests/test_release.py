@@ -17,11 +17,13 @@ class ReleaseTests(unittest.TestCase):
         for name in ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
                      'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md', 'docs/auto-capture.zh-CN.md',
+                     'docs/c7m1-preset.zh-CN.md',
                      'docs/native-tools.zh-CN.md', 'scripts/make_tool_bundle.py',
                      'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
                      'docs/generic-conversion.zh-CN.md', 'docs/batch-testing.zh-CN.md',
                      'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                      'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
+                     'l4d2_bsp/preset_data/c7m1-hazy-static-v1.json',
                      'l4d2_bsp/__init__.py', 'tests/test_example.py', 'examples/c6-c5.example.json'):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,6 +49,8 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn('docs/presets.md', packed.namelist())
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c5m1-daylight-v1.json'), b'fixture')
                 self.assertEqual(packed.read('l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'), b'fixture')
+                self.assertEqual(packed.read('l4d2_bsp/preset_data/c7m1-hazy-static-v1.json'), b'fixture')
+                self.assertIn('docs/c7m1-preset.zh-CN.md', packed.namelist())
                 self.assertIn('docs/c4m3-guide.zh-CN.md', packed.namelist())
                 self.assertIn('docs/auto-capture.zh-CN.md', packed.namelist())
                 self.assertIn('docs/native-tools.zh-CN.md', packed.namelist())
@@ -66,7 +70,8 @@ class ReleaseTests(unittest.TestCase):
         for missing in ('docs/presets.md', 'docs/c4m3-guide.zh-CN.md',
                         'docs/generic-conversion.zh-CN.md', 'docs/batch-testing.zh-CN.md',
                         'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
-                        'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json'):
+                        'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
+                        'l4d2_bsp/preset_data/c7m1-hazy-static-v1.json'):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp) / 'source'
                 self.make_source(root)
@@ -76,13 +81,14 @@ class ReleaseTests(unittest.TestCase):
                     build_release(root, output)
                 self.assertFalse(output.exists())
 
-    def test_python_package_registers_both_builtin_presets_explicitly(self):
+    def test_python_package_registers_builtin_presets_explicitly(self):
         import tomllib
         project = Path(__file__).resolve().parents[1] / 'pyproject.toml'
         settings = tomllib.loads(project.read_text(encoding='utf-8'))
         self.assertEqual(settings['tool']['setuptools']['package-data']['l4d2_bsp'], [
             'preset_data/c5m1-daylight-v1.json',
             'preset_data/c4m3-overcast-static-v1.json',
+            'preset_data/c7m1-hazy-static-v1.json',
         ])
 
     def test_release_rejects_preset_symlink(self):
