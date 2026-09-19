@@ -2,7 +2,7 @@
 
 0.4.0 内置 `c5m1-daylight-v1` 与 `c4m3-overcast-static-v1`，后者提取 C4M3 初始化时的固定阴天参数。两者均不需要目标地图 BSP/LMP。C2→C4 首轮游戏采样、反射导入与原名实机验收已完成；C5 已有接受结果不变。完整游戏资源、官方工具和实际引擎反射采样仍是相应阶段的依赖。
 
-当前未发布版本另登记 `c7m1-hazy-static-v1` 与 `c10m3-night-v1`，采用 schema 3、仅开放 `conversion: generic-replace-*` 通用入口，推荐 v3；不需要参考地图 BSP 作为每次转换的输入。schema 3 支持空的额外方向光、受限太阳材质路径以及按玩家角色区分的曝光/Bloom，详情见 [C7M1](c7m1-preset.zh-CN.md) 与 [C10M3](c10m3-preset.zh-CN.md) 说明。C7M1 已完成 C2M1/C4M3 输入人工验收，C10M3 首个 C2M1 效果待验收。
+当前未发布版本另登记 `c7m1-hazy-static-v1` 与 `c10m3-night-v1`，采用 schema 3、仅开放 `conversion: generic-replace-*` 通用入口，推荐 v3；不需要参考地图 BSP 作为每次转换的输入。schema 3 支持空的额外方向光、受限太阳材质路径以及按玩家角色区分的曝光/Bloom，详情见 [C7M1](c7m1-preset.zh-CN.md) 与 [C10M3](c10m3-preset.zh-CN.md) 说明。C7M1 已完成 C2M1/C4M3 输入人工验收，C10M3 的 C2M1 输入已获人工接受，接续测试 C5M1。
 
 下表是**历史 source_profile 入口**的兼容约束；当前通用入口按实际地图能力检查，不按该表限制来源地图。通用入口已有 C7M1→C4M3、C5M1→C4M3 等实际接受结果，不需要给每张新图新增来源适配器。`supported_sources` 仅描述旧适配器兼容性，C7/C10 的空数组不会限制通用输入。四份内置 JSON 均登记在源码 ZIP 与 Python 包的显式资源清单中。
 
