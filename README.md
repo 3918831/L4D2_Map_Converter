@@ -4,7 +4,7 @@
 
 这是 **Windows / Python 3.11+ 的源码工具包**，Python 部分只使用标准库。完整游戏和地图资源由使用者的本机安装提供；原生工具可使用本机 Authoring Tools，或单独解压的 [Windows 原生工具包](docs/native-tools.zh-CN.md)。源码 ZIP 不包含 Python 运行环境、Valve 工具或游戏素材。
 
-未发布版本新增通用入口专用的 [`c7m1-hazy-static-v1`](docs/c7m1-preset.zh-CN.md)：C7M1 常态暖光与蓝灰雾，含角色曝光/Bloom、专用太阳材质及有限环境底噪，C2M1/C4M3 输入均已获用户画面验收。新增 [`c10m3-night-v1`](docs/c10m3-preset.zh-CN.md) 提取 C10M3 蓝青色夜间光照、雾与调色，C2M1 输入已获人工接受，接续测试 C5M1。预设不移植参考图场景事件。材质残留光泽 VIS-003 按用户要求暂缓，默认仍保留材质。
+未发布版本新增通用入口专用的 [`c7m1-hazy-static-v1`](docs/c7m1-preset.zh-CN.md)：C7M1 常态暖光与蓝灰雾，含角色曝光/Bloom、专用太阳材质及有限环境底噪，C2M1/C4M3 输入均已获用户画面验收。新增 [`c10m3-night-v1`](docs/c10m3-preset.zh-CN.md) 提取 C10M3 蓝青色夜间光照、雾与调色，C2M1/C5M1 输入均已获人工接受。预设不移植参考图场景事件。材质残留光泽 VIS-003 按用户要求暂缓，默认仍保留材质。
 
 ## 当前范围
 
