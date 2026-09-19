@@ -161,6 +161,49 @@ class GenericConversionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Mixed'):
             self.transfer(text)
 
+    def test_retained_outputs_cannot_acquire_generated_targets(self):
+        from l4d2_bsp.generic_conversion import RULES, transfer_generic
+        for kind, pack in [('bsp', make_bsp), ('lmp', make_lmp)]:
+            for rule in RULES:
+                for target, action in [('env_tonemap_controller', 'SetAutoExposureMax'),
+                                       ('__LMC_TONEMAP_V1', 'RunScriptCode'),
+                                       ('__lmc_*', 'FireUser1'),
+                                       ('logic_auto', 'Kill')]:
+                    with self.subTest(kind=kind, rule=rule, target=target):
+                        text = ent('worldspawn') + ent('logic_auto', OnMapSpawn=f'{target},{action},100,1,-1')
+                        with self.assertRaisesRegex(ValueError, 'New output target'):
+                            transfer_generic(pack(text + b'\0'), load_preset(), kind=kind, rule=rule)
+
+    def test_assigned_exposure_name_cannot_activate_dormant_output(self):
+        text = ent('worldspawn') + ent('env_tonemap_controller')
+        text += ent('logic_relay', OnTrigger='__lmc_tonemap_v1,SetAutoExposureMax,100,1,-1')
+        with self.assertRaisesRegex(ValueError, 'New output target'):
+            self.transfer(text + b'\0')
+
+    def test_unrelated_unresolved_output_remains_unchanged(self):
+        text = source().rstrip(b'\0') + ent('logic_relay', OnTrigger='absent_gameplay,Trigger,,1,-1')
+        out, _ = self.transfer(text + b'\0')
+        self.assertIn(b'absent_gameplay,Trigger,,1,-1', BspFile.parse(out).lump_bytes(0))
+
+    def test_templated_exposure_requires_spawn_time_initialization(self):
+        from l4d2_bsp.generic_conversion import EXPOSURES, RULES, transfer_generic
+        for kind, pack in [('bsp', make_bsp), ('lmp', make_lmp)]:
+            for rule in RULES:
+                for cls in EXPOSURES:
+                    for target in ('TONE', 'ton*', '__lmc_tonemap_v1*'):
+                        with self.subTest(kind=kind, rule=rule, cls=cls, target=target):
+                            text = ent('worldspawn') + ent(cls, targetname='tone')
+                            text += ent('point_template', targetname='spawn_tone', Template01=target)
+                            text += ent('logic_relay', OnTrigger='spawn_tone,ForceSpawn,,10,-1')
+                            with self.assertRaisesRegex(ValueError, 'Templated exposure'):
+                                transfer_generic(pack(text + b'\0'), load_preset(), kind=kind, rule=rule)
+
+    def test_unrelated_prop_template_is_preserved(self):
+        text = source().rstrip(b'\0') + ent('point_template', Template01='truck*')
+        text += ent('prop_dynamic', targetname='truck1', model='models/truck.mdl')
+        out, _ = self.transfer(text + b'\0')
+        self.assertIn(b'"Template01" "truck*"', BspFile.parse(out).lump_bytes(0))
+
 
 if __name__ == '__main__':
     unittest.main()

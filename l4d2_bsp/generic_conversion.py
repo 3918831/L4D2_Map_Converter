@@ -3,7 +3,7 @@ import re
 import struct
 
 from .atmosphere_analysis import analyze_entities, entity_value, is_output_pair
-from .entities import parse_entities
+from .entities import Entity, Pair, parse_entities
 from .inspect import sha256
 from .style import _read
 
@@ -48,6 +48,35 @@ def _safe_value(value):
 
 def _flags(entity):
     return int(entity_value(entity, 'spawnflags') or '0')
+
+
+def _check_generated_targets(entities, graph, operations, removals, additions):
+    """Adding/naming controllers must not activate previously dormant IO.
+
+    Keep original indexes and pair positions for comparison. Removed entities
+    and cut outputs are excluded as writers; retaining them in the analysis
+    view cannot conceal any newly introduced recipient.
+    """
+    projected = []
+    for i, entity in enumerate(entities):
+        fields = {k.lower(): (k, v) for k, v in operations.get(i, {}).get('fields', {}).items()}
+        pairs = []
+        for pair in entity.pairs:
+            replacement = fields.pop(pair.key.lower(), None)
+            pairs.append(Pair(pair.key, replacement[1] if replacement else pair.value, -1, -1))
+        pairs.extend(Pair(k, v, -1, -1) for k, v in fields.values())
+        projected.append(Entity(tuple(pairs), -1, -1))
+    projected.extend(Entity(tuple(Pair(k, v, -1, -1) for k, v in pairs), -1, -1)
+                     for pairs in additions)
+    previous = {(o['entity_index'], o['pair_index']): set(o['candidate_targets'])
+                for o in graph['outputs']}
+    cuts = {(i, o['pair_index']) for i, op in operations.items() for o in op['remove_outputs']}
+    for output in analyze_entities(projected)['outputs']:
+        i, j = output['entity_index'], output['pair_index']
+        if i >= len(entities) or i in removals or (i, j) in cuts:
+            continue
+        if set(output['candidate_targets']) - previous[(i, j)]:
+            raise ValueError(f'New output target after controller creation requires review: {i}/{j}/{output["target"]}')
 
 
 def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
@@ -183,6 +212,20 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
             if cls == EXPOSURES[0] and i == master(cls):
                 capture_name = name
 
+    # OnMapSpawn initialization cannot cover controllers recreated later by a
+    # template (including name fixups). Refuse until spawn-time setup exists.
+    exposure_targets = {name.lower() for _, name in exposure_names}
+    for i, entity in enumerate(entities):
+        if (entity_value(entity, 'classname') or '').lower() != 'point_template':
+            continue
+        for pair in entity.pairs:
+            if not re.fullmatch(r'template[0-9]+', pair.key.lower()):
+                continue
+            target = pair.value.lower()
+            if target in exposure_targets or ('*' in target and any(
+                    name.startswith(target.split('*', 1)[0]) for name in exposure_targets)):
+                raise ValueError(f'Templated exposure requires spawn-time initialization: {i}/{pair.key}')
+
     # Remove only edges whose *direct* target candidates are all visual.
     # A wildcard/name shared with gameplay must not lose the other recipients.
     lifecycle_targets = set()
@@ -238,6 +281,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
         for action, value in preset.tonemap_inputs(cls):
             startup.append(('OnMapSpawn', '\x1b'.join((name, action, value, '0', '-1'))))
     additions.append(startup)
+    _check_generated_targets(entities, graph, operations, removals, additions)
     if graph['script_entrypoints']:
         warnings.append('Source scripts retained; external/dynamic atmosphere writers are not statically proven absent.')
     if by_class.get('info_particle_system') or by_class.get('ambient_generic'):

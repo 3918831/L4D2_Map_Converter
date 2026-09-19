@@ -1,3 +1,3 @@
 """Lossless, bounded inspection and visual patching of L4D2 BSP files."""
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'

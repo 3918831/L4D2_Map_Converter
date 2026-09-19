@@ -40,10 +40,10 @@ python scripts/make_release.py --output artifacts/release/l4d2-map-converter-sou
 
 ## 公开状态与许可证
 
-源码仓库为 [3918831/L4D2_Map_Converter](https://github.com/3918831/L4D2_Map_Converter)，本版归档标签为 `v0.6.0`。本地版本是否已同步，以远端提交和标签记录为准。项目许可证尚未选择；本版不擅自添加 MIT 或其他许可，也不代表已取得再发行 Valve 内容的授权。公开发布时由项目所有者确定源码许可、第三方说明和最终上传内容。
+源码仓库为 [3918831/L4D2_Map_Converter](https://github.com/3918831/L4D2_Map_Converter)，本版归档标签为 `v0.7.0`。本地版本是否已同步，以远端提交和标签记录为准。项目许可证尚未选择；本版不擅自添加 MIT 或其他许可，也不代表已取得再发行 Valve 内容的授权。公开发布时由项目所有者确定源码许可、第三方说明和最终上传内容。
 
 本机配置、清单和日志可能含个人路径，留在本机。公开问题可附脱敏错误及必要截图；完整 BSP、VPK、NAV、LMP 和官方工具不进入源码仓库。
 
 ## 本版状态
 
-0.6.0 新增独立 Windows 原生工具打包和 `native_mounts: resource_roots`，解决工具搬迁后相对 DLC 搜索路径的问题，详见 [原生工具指南](native-tools.zh-CN.md)。保留内置 `c5m1-daylight-v1`、`c4m3-overcast-static-v1`、来源适配、显式 donor 旧配置以及 `auto-capture` 与 STOP 恢复命令。C6 晴天及 C2→C4 固定阴天此前已获用户反馈接受，具体产物哈希和未覆盖范围见 [验证说明](validation.md)。新生成包仍独立验收；旧配置、预设和成果不自动迁移。任意外部预设导入、新增雨区、GUI/EXE、其他地图及 S0—S7 八阶段演示仍未实现。
+0.7.0 固化不按地图名分支的通用转换、已知天气/闪电覆盖、批量检查与构建、四套视觉预设及其逐样本验收记录，继续支持独立 Windows 原生工具包和无注入自动采样。保留来源适配及显式 donor 旧配置；旧运行和已接受 VPK 不自动改写。新增控制器的 IO 目标检查及模板曝光拒绝规则防止未经初始化的视觉覆盖。具体范围见 [通用指南](generic-conversion.zh-CN.md)、[批量指南](batch-testing.zh-CN.md) 和 [验证说明](validation.md)。任意外部预设导入、新增雨区、GUI/EXE 及 S0—S7 八阶段演示仍未实现；输入按能力检查，只有列出的样本具有实测结论。

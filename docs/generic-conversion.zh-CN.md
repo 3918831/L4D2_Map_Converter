@@ -4,7 +4,7 @@
 
 ## 配置和执行
 
-复制 `examples/generic.example.json` 到新的本地配置，修改所有路径。`preset` 可选 `c5m1-daylight-v1`（C5M1）、`c4m3-overcast-static-v1`（C4M3 固定阴天）或 `c7m1-hazy-static-v1`（C7M1 常态薄雾，当前待游戏验收）。C7 使用 `examples/generic-c7m1.example.json`，提取范围见 [C7 预设说明](c7m1-preset.zh-CN.md)。需要完整游戏资源、Python 3.11+ 和本机工具或独立原生工具包。
+复制 `examples/generic.example.json` 到新的本地配置，修改所有路径。`preset` 可选 `c5m1-daylight-v1`（C5M1）、`c4m3-overcast-static-v1`（C4M3 固定阴天）、`c7m1-hazy-static-v1`（C7M1 常态薄雾）或 `c10m3-night-v1`（C10M3 蓝青夜景）。C7/C10 分别提供 `examples/generic-c7m1.example.json`、`examples/generic-c10m3.example.json`，推荐 v3；参数范围见 [C7 说明](c7m1-preset.zh-CN.md) 和 [C10 说明](c10m3-preset.zh-CN.md)。C7 已有 C2M1/C4M3 输入人工接受，C10 已有 C2M1/C5M1 输入人工接受；其他组合须独立验证。需要完整游戏资源、Python 3.11+ 和本机工具或独立原生工具包。
 
 ```powershell
 Copy-Item examples/generic.example.json config.generic.local.json
@@ -37,6 +37,7 @@ python -m l4d2_bsp.workflow build --config config.generic.local.json
 - 曝光控制器均使用目标预设，通过新增初始化实体写入。schema 3 可按幸存者／感染者／ghost 类别分别设置曝光和 Bloom，不按实体名字猜玩家角色；采样采用幸存者参数。采样控制器从本轮方案取得，不要求来源地图使用 `tonemap_global`。
 - 删除能明确处理的降水及降水阻挡实体，保留其原 brush 数据。C5M1 当前无风参数，因此本规则移除 env_wind；C4M3 按预设风参数覆盖。按预设决定太阳实体的创建、修改或删除。没有新增降雨体积、闪电或随机风暴。
 - 仅切断直接写向视觉实体的已识别输入；保留上游共享控制器、无关输出和玩法实体。名字大小写、同名目标和星号候选均参加检查。视觉/玩法混合目标、带脚本的视觉控制器、未解释输入、关联输出或生命周期依赖会拒绝转换。
+- 生成控制器及为曝光控制器命名后，重新解析保留的原输出；若原输出新增接收目标则拒绝，避免激活原本无目标的旧 IO。`point_template` 引用现存或新建曝光控制器时也拒绝：开局初始化不能保证后来生成的控制器继承参数。以上保护适用于全部通用规则版本；不影响无关物件模板。
 - 环境音区域统一使用预设的 `outdoor` 声音定义，保留发声点位置和半径。本轮不推断室内外声学分区；这与旧地图适配中的分区选曲有意不同。
 - 预设显式不含太阳或额外方向光时，移除对应点控制器；相关输出、混合目标和生命周期引用继续接受同样的保护检查。已有 C5M1/C4M3 的值和结果不因新增 C7 而改变。
 - 普通粒子、ambient_generic 事件音和外部脚本保留并报告覆盖缺口。因此不能保证任意地图的脚本天气、粒子雨或雷声音效已全部移除，不能仅凭构建通过宣布晴天完整验收。
