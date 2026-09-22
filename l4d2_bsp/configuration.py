@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-GENERIC_CONVERSIONS = ('generic-replace-v1', 'generic-replace-v2', 'generic-replace-v3')
+GENERIC_CONVERSIONS = ('generic-replace-v1', 'generic-replace-v2', 'generic-replace-v3', 'generic-replace-v4')
 MAPS = {'c2-c5': 'c2m1_highway', 'c6-c5': 'c6m1_riverbank'}
 SOURCE_ADAPTERS = {'c2m1_highway': 'c2m1_highway'}
 MAPS.update(SOURCE_ADAPTERS)

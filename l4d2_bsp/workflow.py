@@ -72,7 +72,7 @@ def run_capture_tonemap(report):
     generic_marker = any(isinstance(value, str) and value.startswith('generic-replace-') for value in identities)
     if (cfg.get('conversion') is not None or generic_marker) and cfg.get('conversion') not in GENERIC_CONVERSIONS:
         raise ValueError('Missing or unsupported generic conversion rule; use a new run')
-    if any(value in ('generic-replace-v2', 'generic-replace-v3') for value in identities) and (
+    if any(value in ('generic-replace-v2', 'generic-replace-v3', 'generic-replace-v4') for value in identities) and (
             cfg.get('profile') != cfg.get('conversion')
             or any(isinstance(value, str) and value.startswith('generic-replace-') and value != cfg.get('conversion')
                    for value in identities)):
@@ -88,7 +88,7 @@ def run_capture_tonemap(report):
         raise ValueError('Generic mode audit/config/discovery inventory mismatch; use a new run')
 
     def capture_name(audit):
-        if cfg.get('conversion') in ('generic-replace-v2', 'generic-replace-v3') and (
+        if cfg.get('conversion') in ('generic-replace-v2', 'generic-replace-v3', 'generic-replace-v4') and (
                 not isinstance(audit, dict) or not isinstance(audit.get('plan'), dict)
                 or audit['plan'].get('conversion') != cfg['conversion']
                 or audit.get('conversion') != cfg['conversion']):
@@ -126,6 +126,7 @@ def load_run(root):
         verify_resource_inventory(result['config']['resource_roots'],
                                   _pak_entries(snapshot.lump_bytes(40)), result['model_resource_inventory'])
     verify_material_run(result, root)
+    verify_soundscape_run(result)
     return result
 
 
@@ -142,6 +143,42 @@ def verify_material_run(report, root):
     if hashlib.sha256(raw).hexdigest()!=audit['output_sha256']:
         raise ValueError('Material policy prepared BSP identity mismatch')
     verify_resource_inventory(cfg['resource_roots'],_pak_entries(BspFile.parse(raw).lump_bytes(40)),audit['source_inventory'])
+
+
+def verify_soundscape_run(report):
+    cfg = report.get('config', {})
+    plan = report.get('preflight', {}).get('source_soundscapes')
+    if cfg.get('conversion') != 'generic-replace-v4':
+        if plan is not None:
+            raise ValueError('Source soundscape rule identity mismatch')
+        return
+    if not isinstance(plan, dict) or plan.get('map_name') != cfg.get('map_name'):
+        raise ValueError('Missing source soundscape evidence; use a new run')
+    from .source_soundscapes import verify_source_soundscapes, plan_source_soundscapes
+    from .native import _pak_entries
+    source = Path(cfg['source_bsp']).read_bytes()
+    if hashlib.sha256(source).hexdigest() != plan.get('source_sha256'):
+        raise ValueError('Source soundscape BSP identity changed')
+    modes = {k: file_hash(p) for k, p in cfg['mode_lmps'].items()}
+    if modes != plan.get('mode_sha256'):
+        raise ValueError('Source soundscape modes changed')
+    audits = [report['preflight']['base_style'], *report['preflight']['mode_styles'].values()]
+    if any(a.get('plan', {}).get('soundscape_mapping') != plan.get('mapping') for a in audits):
+        raise ValueError('Source soundscape mapping differs from entity plan')
+    verify_source_soundscapes(plan, cfg['resource_roots'], _pak_entries(BspFile.parse(source).lump_bytes(40)))
+    current = plan_source_soundscapes(source, {k: Path(p).read_bytes() for k, p in cfg['mode_lmps'].items()},
+                                     cfg['resource_roots'], cfg['map_name'])
+    if current != {k: v for k, v in plan.items() if k != 'embedding'}:
+        raise ValueError('Source soundscape plan differs from current inputs and rules')
+
+
+def run_soundscape_assets(report, map_name):
+    if report.get('config', {}).get('conversion') == 'generic-replace-v4':
+        from .source_soundscapes import source_soundscape_assets
+        return source_soundscape_assets(report['preflight']['source_soundscapes'], map_name)
+    from .soundscapes import preset_soundscape_assets
+    preset = run_preset(report)
+    return preset_soundscape_assets(preset, map_name) if preset else {}
 
 
 def status_summary(report):
@@ -173,9 +210,16 @@ def check(config_path, *, progress=None):
     notify("conversion_plan")
     modes, mode_audits = {}, {}
     generic = cfg.get('conversion') in GENERIC_CONVERSIONS
+    soundscape_audit = None
+    if cfg.get('conversion') == 'generic-replace-v4':
+        from .source_soundscapes import plan_source_soundscapes
+        soundscape_audit = plan_source_soundscapes(source, {k: p.read_bytes() for k, p in cfg['mode_lmps'].items()},
+                                                  cfg['resource_roots'], cfg['map_name'])
     if generic:
         from .generic_conversion import transfer_generic
         rule_options = {'rule': cfg['conversion']} if cfg['conversion'] != 'generic-replace-v1' else {}
+        if soundscape_audit is not None:
+            rule_options['soundscapes'] = soundscape_audit['mapping']
         output, audit = transfer_generic(source, preset, **rule_options)
         for key, path in cfg['mode_lmps'].items():
             modes[key], mode_audits[key] = transfer_generic(path.read_bytes(), preset, kind='lmp', **rule_options)
@@ -184,6 +228,9 @@ def check(config_path, *, progress=None):
         output, audit = transfer_style(source, donor, profile=cfg['profile'], atmosphere_policy=cfg['atmosphere_policy'])
         for key, path in cfg['mode_lmps'].items():
             modes[key], mode_audits[key] = transfer_style(path.read_bytes(), preset if preset else cfg['reference_lmp'].read_bytes(), profile=cfg['profile'], kind='lmp', reference_kind='lmp', atmosphere_policy=cfg['atmosphere_policy'])
+    if soundscape_audit is not None:
+        from .source_soundscapes import embed_source_soundscapes
+        output, soundscape_audit['embedding'] = embed_source_soundscapes(output, soundscape_audit)
     material_audit=None
     if cfg.get('material_policy','preserve')!='preserve':
         from .material_policy import apply_material_policy
@@ -197,6 +244,8 @@ def check(config_path, *, progress=None):
         names.extend(SOUNDSCAPE_RESOURCES)
     if preset:
         names = preset.required_resources(cfg['atmosphere_policy'])
+    if soundscape_audit is not None:
+        names = [n for n in names if not n.startswith(('sound/', 'scripts/soundscapes'))]
     notify('resources')
     assets = lookup_resources(cfg['resource_roots'], names)
     missing = [name for name, item in assets['resources'].items() if not item['found']]
@@ -215,6 +264,8 @@ def check(config_path, *, progress=None):
             'Only discovered h/l/s index-zero loose entity patches are converted; no missing patches or NAV are generated.',
             'Resource roots are lookup candidates; game mount order must be checked in game.',
             'Generic atmosphere replacement remains bounded by the recorded plan; scripts and runtime visuals require independent testing.'])
+    if soundscape_audit is not None:
+        report['source_soundscapes'] = soundscape_audit
     if material_audit is not None:report['material_policy']=material_audit
     return cfg, report, output, modes
 
@@ -258,6 +309,7 @@ def build(config_path):
         snapshot = compile_dir / 'input.bsp.snapshot'
         snapshot.write_bytes(prepared)
         verify_material_run(report,root)
+        verify_soundscape_run(report)
         bsp = compile_dir / (name + '.bsp')
         bsp.write_bytes(prepared)
         print('Checking static-prop model versions and snapshotting model resources.', flush=True)
@@ -274,6 +326,7 @@ def build(config_path):
         compiled = bsp.read_bytes()
         model_evidence.verify_current()
         verify_material_run(report,root)
+        verify_soundscape_run(report)
         report['bake_audit'] = audit_bake(
             prepared, compiled, model_evidence=model_evidence,
             allow_leaf_sky_flags=cfg.get('native_mounts') == 'resource_roots')
@@ -281,11 +334,10 @@ def build(config_path):
         report['compiler_diagnostics'] = [line for line in log.splitlines() if re.search(r'error|warning|not found|could not|couldn.t', line, re.I)]
         if any(re.search(r'Error loading studio model|Error!.*(?:material|model)|could not open.*(?:mdl|vmt)', line, re.I) for line in report['compiler_diagnostics']):
             raise ValueError('VRAD reported missing model/material inputs; inspect compiler_diagnostics and bake/vrad.log')
-        from .soundscapes import preset_soundscape_assets
         preset = run_preset(report)
         payloads = {f'maps/{name}.bsp': compiled, f'maps/{name}.nav': cfg['nav'].read_bytes(),
                     'addoninfo.txt': addon_info(name, 'offline', preset_id=preset.id if preset else None)}
-        payloads.update(preset_soundscape_assets(preset, name) if preset else {})
+        payloads.update(run_soundscape_assets(report, name))
         payloads.update({f'maps/{name}_{key}_0.lmp': data for key, data in modes.items()})
         if cfg['exclude']:
             payloads[f'maps/{name}_exclude.lst'] = cfg['exclude'].read_bytes()
@@ -299,6 +351,7 @@ def build(config_path):
         report['tracked_outputs'].extend(tracked(Path(package['vpk']).with_suffix('') / item['name']) for item in package['files'])
         verify_inventory(inventory)
         model_evidence.verify_current()
+        verify_soundscape_run(report)
         report['status'] = 'offline_ready'
         report['reflection_strategy'] = 'original sampled/default reflection textures preserved; not recaptured'
         write_json(manifest, report)
@@ -327,8 +380,7 @@ def prepare(root):
             assets[relative] = (original / item['name']).read_bytes()
     preset = run_preset(report)
     if preset:
-        from .soundscapes import preset_soundscape_assets
-        assets.update(preset_soundscape_assets(preset, alias))
+        assets.update(run_soundscape_assets(report, alias))
     assets.update(capture_controls(map_name=name, alias=alias, marker='lmc_' + report['run_id'],
                                   exposure_max=preset.capture_exposure_max if preset else 5,
                                   tonemap_name=run_capture_tonemap(report)))
@@ -349,6 +401,7 @@ def prepare(root):
     report['capture_instructions'] = {'game_dir': report['config']['game_dir'], 'files_to_install': str(capture_dir),
         'purpose': 'Temporary alias is for native cubemap generation only, never the delivered gameplay map.',
         'after_capture': 'Restore specular, exit game, copy the generated alias BSP and capture log to evidence/, then finish-capture.'}
+    verify_soundscape_run(report)
     write_json(root / 'run.json', report)
     print(json.dumps({'status': report['status'], 'alias': alias, 'controls': sorted(n for n in assets if n.startswith('cfg/'))}, ensure_ascii=False))
     return report
@@ -440,6 +493,7 @@ def _finish(root, capture_path, log_path):
     report.pop('last_capture_import_error', None)
     report['tracked_outputs'].extend([tracked(output), tracked(package['vpk']), tracked(stage / 'captured.bsp'), tracked(stage / 'capture.log')])
     verify_inventory(report['input_inventory'])
+    verify_soundscape_run(report)
     write_json(root / 'run.json', report)
     print(json.dumps(status_summary(report), ensure_ascii=False))
     return report

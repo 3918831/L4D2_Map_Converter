@@ -9,7 +9,7 @@ from .style import _read
 
 
 RULE = 'generic-replace-v1'
-RULES = (RULE, 'generic-replace-v2', 'generic-replace-v3')
+RULES = (RULE, 'generic-replace-v2', 'generic-replace-v3', 'generic-replace-v4')
 INIT = '__lmc_style_init_v1'
 CLASS_ROLES = {
     'worldspawn': 'world', 'light_environment': 'environment',
@@ -79,7 +79,7 @@ def _check_generated_targets(entities, graph, operations, removals, additions):
             raise ValueError(f'New output target after controller creation requires review: {i}/{j}/{output["target"]}')
 
 
-def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
+def plan_conversion(data, preset, *, kind='bsp', rule=RULE, soundscapes=None):
     """Plan from original bytes. Target values come from the validated preset.
 
     Runtime script semantics are not inferred. Static reachability is never
@@ -88,6 +88,15 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     if rule not in RULES:
         raise ValueError('Unsupported generic conversion rule')
     _, _, entities = _read(data, kind)
+    sound_classes = {'env_soundscape', 'env_soundscape_triggerable'}
+    visual = VISUAL - sound_classes if rule == 'generic-replace-v4' else VISUAL
+    if rule == 'generic-replace-v4':
+        if soundscapes is None:
+            soundscapes = {}
+        if not isinstance(soundscapes, dict) or any(
+                not isinstance(k, str) or not isinstance(v, str) or
+                not re.fullmatch(r'lmc_src_[0-9a-f]{16}\.[0-9a-f]{16}', v) for k, v in soundscapes.items()):
+            raise ValueError('Invalid source soundscape mapping')
     graph = analyze_entities(entities)
     if graph['issues']:
         raise ValueError(f'Entity analysis requires resolution: {graph["issues"]}')
@@ -98,9 +107,9 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     for i, entity in enumerate(entities):
         by_class.setdefault(entity_value(entity, 'classname'), []).append(i)
     weather = None
-    if rule in ('generic-replace-v2', 'generic-replace-v3'):
+    if rule != RULE:
         from .generic_weather import weather_evidence
-        weather = weather_evidence(entities, graph, remove_lightning=rule == 'generic-replace-v3')
+        weather = weather_evidence(entities, graph, remove_lightning=rule in ('generic-replace-v3', 'generic-replace-v4'))
     operations, removals, additions = {}, set(weather['removed']) if weather else set(), []
     anchor = next((entity_value(e, 'origin') for e in entities
                    if entity_value(e, 'classname') == 'light_environment' and entity_value(e, 'origin')), '0 0 0')
@@ -130,7 +139,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
 
     for i, entity in enumerate(entities):
         cls = entity_value(entity, 'classname')
-        if cls in VISUAL and (entity_value(entity, 'vscripts') or entity_value(entity, 'thinkfunction')):
+        if cls in visual and (entity_value(entity, 'vscripts') or entity_value(entity, 'thinkfunction')):
             raise ValueError(f'Visual controller script requires review: {i}/{cls}')
         if cls in CLASS_ROLES:
             values = preset.role_values(CLASS_ROLES[cls])
@@ -163,7 +172,14 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
             else:
                 change(i, preset.wind_values)
         elif cls in ('env_soundscape', 'env_soundscape_triggerable'):
-            change(i, {'soundscape': preset.soundscape_mapping['outdoor']})
+            if rule == 'generic-replace-v4':
+                original = entity_value(entity, 'soundscape')
+                if original:
+                    if original.lower() not in soundscapes:
+                        raise ValueError(f'Missing source soundscape evidence: {original}')
+                    change(i, {'soundscape': soundscapes[original.lower()]})
+            else:
+                change(i, {'soundscape': preset.soundscape_mapping['outdoor']})
 
     # Point controllers may be created; never invent a sky_camera/brush region.
     for cls, role in CLASS_ROLES.items():
@@ -237,7 +253,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
         if (weather is not None and targets and output['input'].lower() == 'kill'
                 and all(entity_value(entities[j], 'classname') == 'env_wind' for j in targets)):
             continue  # Preserve template/parent lifecycle while normalizing wind values.
-        visual_targets = [j for j in targets if entity_value(entities[j], 'classname') in VISUAL
+        visual_targets = [j for j in targets if entity_value(entities[j], 'classname') in visual
                           or (weather and j in weather['removed']) or extra_reason]
         if visual_targets:
             if len(visual_targets) != len(targets):
@@ -245,7 +261,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
             from .generic_weather import EXTRA_INPUTS
             allowed_extra = weather is not None and all(output['input'].lower() in
                 EXTRA_INPUTS.get(entity_value(entities[j], 'classname'), set()) for j in targets)
-            if rule == 'generic-replace-v3':
+            if rule in ('generic-replace-v3', 'generic-replace-v4'):
                 from .generic_weather import PARTICLE_INPUTS
                 particle_targets = [j for j in targets if entity_value(entities[j], 'classname') == 'info_particle_system']
                 if particle_targets:
@@ -270,7 +286,7 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
     for i, entity in enumerate(entities):
         for pair in entity.pairs:
             if (pair.key.lower().startswith('template') or pair.key.lower() in ('parentname', 'target')
-                    or (rule == 'generic-replace-v3' and i not in removals
+                    or (rule in ('generic-replace-v3', 'generic-replace-v4') and i not in removals
                         and re.fullmatch(r'cpoint[0-9]+', pair.key.lower()))):
                 target = pair.value.split(',', 1)[0].lower()
                 if target in removed_names or ('*' in target and any(n.startswith(target.split('*', 1)[0]) for n in removed_names)):
@@ -288,7 +304,9 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
         warnings.append('Particle systems and event sounds retained; weather ownership is not inferred from names.'
                         if weather is None else
                         'Uncatalogued particles and event sounds retained; weather ownership is not inferred from names.')
-    warnings.extend(['All soundscape regions use the preset outdoor definition; spatial placement is retained.',
+    warnings.extend([('Source soundscape placement and controller IO retained; catalogued weather layers filtered.'
+                      if rule == 'generic-replace-v4' else
+                      'All soundscape regions use the preset outdoor definition; spatial placement is retained.'),
                      'Existing local lights/materials and sky_camera transforms are preserved.',
                      'Only explicit preset fields plus documented activation/master defaults are normalized.'])
     result = dict(schema_version=1, conversion=rule, kind=kind, source_sha256=sha256(data),
@@ -298,14 +316,16 @@ def plan_conversion(data, preset, *, kind='bsp', rule=RULE):
                 removed_entities=sorted(removals),
                 added_entities=[[[key, value] for key, value in pairs] for pairs in additions],
                 coverage_warnings=warnings)
+    if rule == 'generic-replace-v4':
+        result['soundscape_mapping'] = dict(soundscapes)
     if weather is not None:
         result['weather_evidence'] = weather['audit']
     return result
 
 
-def apply_plan(data, plan, preset):
+def apply_plan(data, plan, preset, *, soundscapes=None):
     """Reject arbitrary or stale edits by reproducing the authorized rule plan."""
-    if not isinstance(plan, dict) or plan != plan_conversion(data, preset, kind=plan.get('kind', 'bsp'), rule=plan.get('conversion', RULE)):
+    if not isinstance(plan, dict) or plan != plan_conversion(data, preset, kind=plan.get('kind', 'bsp'), rule=plan.get('conversion', RULE), soundscapes=soundscapes):
         raise ValueError('Plan differs from the current input, preset or conversion rules')
     parsed, text, entities = _read(data, plan['kind'])
     expected = [[(p.key, p.value) for p in e.pairs] for e in entities]
@@ -378,5 +398,5 @@ def apply_plan(data, plan, preset):
                         entity_counts=[len(entities), len(after)], coverage_warnings=plan['coverage_warnings'])
 
 
-def transfer_generic(data, preset, *, kind='bsp', rule=RULE):
-    return apply_plan(data, plan_conversion(data, preset, kind=kind, rule=rule), preset)
+def transfer_generic(data, preset, *, kind='bsp', rule=RULE, soundscapes=None):
+    return apply_plan(data, plan_conversion(data, preset, kind=kind, rule=rule, soundscapes=soundscapes), preset, soundscapes=soundscapes)

@@ -14,6 +14,7 @@ PUBLIC_FILES = ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gi
                 'docs/native-tools.zh-CN.md',
                 'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
                 'docs/generic-conversion.zh-CN.md', 'docs/batch-testing.zh-CN.md',
+                'docs/source-audio.zh-CN.md',
                 'l4d2_bsp/preset_data/c5m1-daylight-v1.json',
                 'l4d2_bsp/preset_data/c4m3-overcast-static-v1.json',
                 'l4d2_bsp/preset_data/c7m1-hazy-static-v1.json',

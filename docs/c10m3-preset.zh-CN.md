@@ -1,6 +1,6 @@
 # C10M3 夜晚预设
 
-预设 ID `c10m3-night-v1`，schema 3，使用通用 `generic-replace-v3` 入口。提取参考图 `c10m3_ranchhouse` 的常态夜间环境；原始 C2M1 和 C5M1 两个输入均已完成机器流程并获用户画面验收。详情见 [验证记录](validation.md)，通过范围限于已测样本的实际观察，不扩大为任意地图、全路线或全部模式通过。
+预设 ID `c10m3-night-v1`，schema 3，历史验证使用通用 `generic-replace-v3` 入口；当前示例改为 `generic-replace-v4`，见[保留来源声音](source-audio.zh-CN.md)。提取参考图 `c10m3_ranchhouse` 的常态夜间环境；原始 C2M1 和 C5M1 两个输入均已完成机器流程并获用户画面验收。详情见 [验证记录](validation.md)，通过范围限于已测样本的实际观察，不扩大为任意地图、全路线或全部模式通过。
 
 ## 参数来源与选择
 

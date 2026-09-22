@@ -45,7 +45,7 @@
 
 ## 使用和下一轮验证
 
-复制 `examples/generic-c7m1.example.json`，修改游戏、工具、输入和全新输出目录。使用 `conversion: generic-replace-v3`、`preset: c7m1-hazy-static-v1`，沿用 check → build → auto-capture → 人工验收。不能将新的目标 ID 塞入旧 c2-c5/c6-c5 配置。
+复制 `examples/generic-c7m1.example.json`，修改游戏、工具、输入和全新输出目录。新建运行使用 `conversion: generic-replace-v4`（[保留来源声音](source-audio.zh-CN.md)，历史 v3 验收记录不变）、`preset: c7m1-hazy-static-v1`，沿用 check → build → auto-capture → 人工验收。不能将新的目标 ID 塞入旧 c2-c5/c6-c5 配置。
 
 采样 guard 按幸存者控制器期待 max 9，不会误用感染者的 3。建议下一轮选择已验证的原始 C2M1 或 C5M1，覆盖室外、室内、阴影和近景反射；人工确认无黑线、缺材质、异常发白及玩法退化。新预设的感染者／ghost 参数已离线验证，但其游戏视角仍须单独实测，不能由合作模式画面代替。
 

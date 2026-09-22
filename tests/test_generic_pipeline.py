@@ -12,6 +12,41 @@ def capture_audit(name='__lmc_tonemap_v1', **plan):
 
 
 class GenericConfigurationTests(unittest.TestCase):
+    def test_v4_uses_source_audio_and_excludes_donor_audio_dependencies(self):
+        from l4d2_bsp.workflow import check, run_capture_tonemap
+        self.value['conversion'] = 'generic-replace-v4'
+        self.file('game/left4dead2/scripts/soundscapes_manifest.txt', b'soundscapes_manifest { file scripts/soundscapes_local.txt }')
+        self.file('game/left4dead2/scripts/soundscapes_local.txt', b'room { dsp 1 }')
+        text = entity('worldspawn') + entity('env_soundscape', soundscape='room', targetname='a') + b'\0'
+        self.file('input/custom-map.bsp', wrap(text))
+        self.file('input/custom-map_l_0.lmp', wrap(text, 'lmp'))
+        self.load()
+        with patch('l4d2_bsp.resources.lookup_resources', return_value={'resources': {}}) as lookup:
+            cfg, report, output, modes = check(self.config)
+        self.assertEqual(report['source_soundscapes']['policy'], 'source-dry-v1')
+        self.assertEqual(set(report['source_soundscapes']['mode_sha256']), {'l'})
+        self.assertFalse(any(n.startswith(('sound/', 'scripts/soundscapes')) for n in lookup.call_args.args[1]))
+        self.assertNotIn(b'c5m1.waterfront', output)
+        self.assertEqual(run_capture_tonemap({'config': cfg, 'preflight': report}), '__lmc_tonemap_v1')
+        from l4d2_bsp.workflow import verify_soundscape_run, run_soundscape_assets
+        import copy, hashlib
+        run = {'config': cfg, 'preflight': report}
+        verify_soundscape_run(run)
+        raw = run_soundscape_assets(run, 'mc01234567')['scripts/soundscapes_mc01234567.txt']
+        self.assertEqual(raw, report['source_soundscapes']['payload_script'].encode('latin1'))
+        from l4d2_bsp.native import _pak_entries
+        from l4d2_bsp.binary import BspFile
+        self.assertEqual(raw, _pak_entries(BspFile.parse(output).lump_bytes(40))['scripts/soundscapes_custom-map.txt'])
+        changed = copy.deepcopy(run)
+        plan = changed['preflight']['source_soundscapes']
+        plan['payload_script'] += '\n"unexpected" { "dsp" "2" }'
+        plan['payload_sha256'] = hashlib.sha256(plan['payload_script'].encode()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'soundscape'):
+            verify_soundscape_run(changed)
+        self.file('game/left4dead2/scripts/soundscapes_local.txt', b'room { dsp 2 }')
+        with self.assertRaisesRegex(ValueError, 'changed|soundscape'):
+            verify_soundscape_run(run)
+
     def test_opt_in_material_policy_is_applied_and_default_preserves_original_output(self):
         from test_material_policy import resources, scene
         from l4d2_bsp.workflow import check

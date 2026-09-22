@@ -1,11 +1,11 @@
 {
-  "conversion": "generic-replace-v3",
+  "conversion": "generic-replace-v4",
   "preset": "c5m1-daylight-v1",
   "material_policy": "catalogued-static-reflections-v1",
   "source_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c4m3_sugarmill_b.bsp",
   "game_dir": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2",
   "tools_dir": "E:/l4d2-native-tools/bin",
-  "output_dir": "./runs/optional-materials-01",
+  "output_dir": "./runs/optional-materials-audio-v4-01",
   "native_mounts": "resource_roots",
   "threads": 4,
   "timeout_seconds": 3600

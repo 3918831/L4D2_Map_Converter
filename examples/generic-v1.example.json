@@ -1,10 +1,10 @@
 {
-  "conversion": "generic-replace-v4",
+  "conversion": "generic-replace-v1",
   "preset": "c5m1-daylight-v1",
   "source_bsp": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2/maps/c1m1_hotel.bsp",
   "game_dir": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/left4dead2",
   "tools_dir": "E:/SteamLibrary/steamapps/common/Left 4 Dead 2/bin",
-  "output_dir": "./runs/c1-c5-generic-audio-v4-01",
+  "output_dir": "./runs/c1-c5-generic-01",
   "native_mounts": "resource_roots",
   "threads": 4,
   "timeout_seconds": 3600

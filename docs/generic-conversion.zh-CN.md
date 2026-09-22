@@ -4,7 +4,9 @@
 
 ## 配置和执行
 
-复制 `examples/generic.example.json` 到新的本地配置，修改所有路径。`preset` 可选 `c5m1-daylight-v1`（C5M1）、`c4m3-overcast-static-v1`（C4M3 固定阴天）、`c7m1-hazy-static-v1`（C7M1 常态薄雾）或 `c10m3-night-v1`（C10M3 蓝青夜景）。C7/C10 分别提供 `examples/generic-c7m1.example.json`、`examples/generic-c10m3.example.json`，推荐 v3；参数范围见 [C7 说明](c7m1-preset.zh-CN.md) 和 [C10 说明](c10m3-preset.zh-CN.md)。C7 已有 C2M1/C4M3 输入人工接受，C10 已有 C2M1/C5M1 输入人工接受；其他组合须独立验证。需要完整游戏资源、Python 3.11+ 和本机工具或独立原生工具包。
+新建转换推荐 v4，四套预设的普通环境音改为保留来源、只过滤明确天气层。默认 `generic.example.json` 及 C4/C7/C10 专用通用示例均已选用 v4；原 v1/v2/v3 示例和运行保持。详细声音规则、资源隔离及迁移见 [来源声音指南](source-audio.zh-CN.md)。下文 v1/v2/v3 的统一预设环境音说明仅适用于相应旧规则。
+
+复制 `examples/generic.example.json` 到新的本地配置，修改所有路径。`preset` 可选 `c5m1-daylight-v1`（C5M1）、`c4m3-overcast-static-v1`（C4M3 固定阴天）、`c7m1-hazy-static-v1`（C7M1 常态薄雾）或 `c10m3-night-v1`（C10M3 蓝青夜景）。C7/C10 分别提供 `examples/generic-c7m1.example.json`、`examples/generic-c10m3.example.json`，推荐 v4；参数范围见 [C7 说明](c7m1-preset.zh-CN.md) 和 [C10 说明](c10m3-preset.zh-CN.md)。C7 已有 C2M1/C4M3 输入人工接受，C10 已有 C2M1/C5M1 输入人工接受；其他组合须独立验证。需要完整游戏资源、Python 3.11+ 和本机工具或独立原生工具包。
 
 ```powershell
 Copy-Item examples/generic.example.json config.generic.local.json
@@ -17,7 +19,7 @@ python -m l4d2_bsp.workflow build --config config.generic.local.json
 
 | 配置 | 作用 |
 |---|---|
-| `conversion` | 选择 `generic-replace-v1`、`generic-replace-v2` 或 `generic-replace-v3`；不与 `source_profile`、旧 `profile`、参考地图或手填 `mode_lmps` 混用 |
+| `conversion` | 新建运行选择 `generic-replace-v4`；v1/v2/v3 保留用于历史复现；不与 `source_profile`、旧 `profile`、参考地图或手填 `mode_lmps` 混用 |
 | `source_bsp` | 原始松散 BSP，不应是本工具已经转换的结果 |
 | `preset` | 固定目标参数；无需目标地图 BSP/LMP |
 | `game_dir` / `tools_dir` | 完整测试游戏的 `left4dead2` 和工具包的 `bin`；工具包需独立解压 |

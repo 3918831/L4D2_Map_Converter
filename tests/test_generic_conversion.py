@@ -204,6 +204,28 @@ class GenericConversionTests(unittest.TestCase):
         out, _ = self.transfer(text + b'\0')
         self.assertIn(b'"Template01" "truck*"', BspFile.parse(out).lump_bytes(0))
 
+    def test_v4_keeps_soundscape_control_io_and_ordinary_event_audio(self):
+        from l4d2_bsp.generic_conversion import transfer_generic
+        text = ent('worldspawn') + ent('env_soundscape', targetname='room', soundscape='source.room', radius='75')
+        text += ent('logic_relay', OnTrigger='room,Disable,,0,-1')
+        text += ent('ambient_generic', targetname='alarm', message='car.alarm')
+        mapping = {'source.room': 'lmc_src_0123456789abcdef.0123456789abcdef'}
+        for preset in ('c5m1-daylight-v1', 'c4m3-overcast-static-v1', 'c7m1-hazy-static-v1', 'c10m3-night-v1'):
+            for kind, pack in [('bsp', make_bsp), ('lmp', make_lmp)]:
+                with self.subTest(preset=preset, kind=kind):
+                    out, report = transfer_generic(pack(text + b'\0'), load_preset(preset), kind=kind,
+                                                   rule='generic-replace-v4', soundscapes=mapping)
+                    from l4d2_bsp.style import _read
+                    final = _read(out, kind)[1]
+                    self.assertIn(b'room,Disable,,0,-1', final)
+                    self.assertIn(b'"radius" "75"', final)
+                    self.assertIn(b'car.alarm', final)
+                    self.assertIn(mapping['source.room'].encode(), final)
+                    self.assertTrue(report['protected_io_unchanged'])
+                    self.assertNotIn(b'c5m1.waterfront', final)
+        with self.assertRaisesRegex(ValueError, 'soundscape'):
+            transfer_generic(make_bsp(text + b'\0'), load_preset(), rule='generic-replace-v4')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -17,7 +17,7 @@ class ReleaseTests(unittest.TestCase):
         for name in ('README.md', 'NOTICE.md', 'CHANGELOG.md', 'pyproject.toml', '.gitignore',
                      'docs/guide.zh-CN.md', 'docs/architecture.md', 'docs/validation.md', 'docs/release.md',
                      'docs/presets.md', 'docs/c4m3-guide.zh-CN.md', 'docs/c4m3-preparation.md', 'docs/auto-capture.zh-CN.md',
-                     'docs/c7m1-preset.zh-CN.md',
+                     'docs/c7m1-preset.zh-CN.md', 'docs/source-audio.zh-CN.md',
                      'docs/c10m3-preset.zh-CN.md',
                      'docs/native-tools.zh-CN.md', 'scripts/make_tool_bundle.py',
                      'docs/evolution-strategy.zh-CN.md', 'docs/generic-analysis.zh-CN.md',
